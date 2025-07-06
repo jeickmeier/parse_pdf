@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from pydantic import BaseModel
 
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.config import AppConfig
@@ -9,7 +10,8 @@ class DummyParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D401
+        _ = options
         return ParseResult(content="dummy", metadata=self.get_metadata(input_path))
 
 

@@ -21,6 +21,7 @@ from typing import Any, cast
 import typer
 
 from .config import AppConfig
+from .options import PdfOptions
 
 # For type checking only (avoid reimport warnings)
 
@@ -32,6 +33,18 @@ FORMAT_OPTION = typer.Option("markdown", "--format", "-f", help="Output format: 
 NO_CACHE_OPTION = typer.Option(False, "--no-cache", help="Disable cache for this run")
 POST_PROMPT_OPTION = typer.Option(None, "--post-prompt", help="LLM prompt for post-processing")
 OUTPUT_OPTION = typer.Option(None, "--output", "-o", help="File path to save output instead of stdout")
+
+# PDF-specific options
+PAGE_RANGE_OPTION = typer.Option(
+    None,
+    "--page-range",
+    help="For PDFs: inclusive 1-based page range, e.g. '1:3'",
+)
+PROMPT_TEMPLATE_OPTION = typer.Option(
+    None,
+    "--prompt-template",
+    help="Custom prompt template (string or template ID) for extraction (PDF only).",
+)
 
 # New configuration helpers
 CONFIG_FILE_OPTION = typer.Option(
@@ -86,6 +99,8 @@ def parse(
     no_cache: bool = NO_CACHE_OPTION,
     post_prompt: str | None = POST_PROMPT_OPTION,
     output: Path | None = OUTPUT_OPTION,
+    page_range: str | None = PAGE_RANGE_OPTION,
+    prompt_template: str | None = PROMPT_TEMPLATE_OPTION,
     config_file: Path | None = CONFIG_FILE_OPTION,
 ) -> None:
     """Parse a document or URL and print or save the result.
@@ -99,6 +114,8 @@ def parse(
         no_cache (bool): If True, disables caching.
         post_prompt (Optional[str]): LLM prompt for post-processing.
         output (Optional[Path]): Destination file path for saving result.
+        page_range (Optional[str]): For PDFs: inclusive 1-based page range, e.g. '1:3'.
+        prompt_template (Optional[str]): Custom prompt template (string or template ID) for extraction (PDF only).
         config_file (Optional[Path]): Optional JSON/TOML/YAML file with Settings overrides.
 
     Examples:
@@ -137,8 +154,30 @@ def parse(
 
     parser = AppConfig.from_path(file, settings)
 
+    # ------------------------------------------------------------------
+    # Build typed options object based on parser type
+    # ------------------------------------------------------------------
+    options_obj: Any | None = None
+    from doc_parser.parsers.pdf.parser import PDFParser  # local import to avoid heavy deps on startup
+
+    if isinstance(parser, PDFParser):
+        # Page range conversion if provided
+        pr: tuple[int, int] | None = None
+        if page_range:
+            try:
+                parts = page_range.split(":")
+                if len(parts) == 2:  # noqa: PLR2004
+                    pr = (int(parts[0]), int(parts[1]))
+                else:
+                    raise ValueError
+            except ValueError as exc:  # pragma: no cover
+                typer.echo("--page-range must be of form START:END", err=True)
+                raise typer.Exit(1) from exc
+
+        options_obj = PdfOptions(page_range=pr, prompt_template=prompt_template)
+
     # Execute asynchronous parse via asyncio.run for CLI convenience
-    result = asyncio.run(parser.parse(file))
+    result = asyncio.run(parser.parse(file, options=options_obj))
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)

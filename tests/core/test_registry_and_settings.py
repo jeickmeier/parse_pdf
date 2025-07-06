@@ -1,5 +1,6 @@
 from pathlib import Path
 from typing import Any
+from pydantic import BaseModel
 
 import pytest
 
@@ -17,7 +18,8 @@ class TxtParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return input_path.suffix.lower() == ".txt"
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D401
+        _ = options
         return ParseResult(content=input_path.read_text(), metadata=self.get_metadata(input_path))
 
 

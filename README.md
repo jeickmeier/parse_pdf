@@ -180,6 +180,35 @@ class TextParser(BaseParser):
 ```
 
 ---
+## Typed Options API
+
+All parser-specific configuration is now provided via **typed option objects** imported from `doc_parser.options`:
+
+```python
+from doc_parser.options import PdfOptions
+from doc_parser.config import AppConfig
+from doc_parser.parsers.pdf.parser import PDFParser
+
+settings = AppConfig(use_cache=False)
+parser = PDFParser(settings)
+
+result = await parser.parse(
+    Path("report.pdf"),
+    options=PdfOptions(page_range=(1, 5), prompt_template="custom-prompt")
+)
+```
+
+### CLI
+
+The `doc_parser` CLI exposes matching flags for PDFs:
+
+```bash
+python -m doc_parser.cli parse sample.pdf --page-range 1:5 --prompt-template "custom-prompt"
+```
+
+Other generic flags remain the same (`--format`, `--no-cache`, `--post-prompt`, etc.).
+
+---
 ## Contributing
 
 Contributions are welcome! Please submit a pull request or open an issue at our GitHub repository.

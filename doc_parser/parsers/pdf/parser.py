@@ -26,13 +26,14 @@ Example:
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from pdf2image import convert_from_path
 from tqdm.asyncio import tqdm
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.options import PdfOptions
 from doc_parser.utils.async_batcher import RateLimiter
 from doc_parser.utils.cache import cache_get, cache_set
 
@@ -42,8 +43,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from PIL import Image
+    from pydantic import BaseModel
 
-    from doc_parser.prompts import PromptTemplate
+    from doc_parser.prompts import PromptTemplate, PromptTemplate as _PromptTemplate
 
 
 @AppConfig.register("pdf", [".pdf"])
@@ -116,7 +118,7 @@ class PDFParser(BaseParser):
             return False
         return size != 0
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D417
         """Parse a PDF document and return extraction results.
 
         Orchestrates validation, image conversion, text extraction,
@@ -146,15 +148,24 @@ class PDFParser(BaseParser):
                 errors=[f"Invalid PDF file: {input_path}"],
             )
 
-        # Get options
-        page_range = _kwargs.get("page_range")
-        prompt_template = _kwargs.get("prompt_template")
+        # Extract typed options
+        pdf_opts: PdfOptions
+        if options is None:
+            pdf_opts = PdfOptions()
+        elif isinstance(options, PdfOptions):
+            pdf_opts = options
+        else:
+            # Downcast - allow callers to supply generic BaseModel but ensures type safety internally.
+            pdf_opts = PdfOptions.model_validate(options.model_dump())
+
+        page_range = pdf_opts.page_range
+        prompt_template = pdf_opts.prompt_template
 
         # Convert PDF to images
         images = await self._pdf_to_images(input_path, page_range)
 
         # Process pages
-        results = await self._process_pages(images, input_path, prompt_template)
+        results = await self._process_pages(images, input_path, cast("_PromptTemplate | None", prompt_template))
 
         # Combine results
         content = self._combine_results(results)

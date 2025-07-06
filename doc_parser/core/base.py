@@ -122,7 +122,7 @@ class BaseParser(ABC):
         input_path: Path,
         *,
         output_format: str | None = None,
-        **kwargs: Any,
+        options: BaseModel | None = None,
     ) -> ParseResult:
         """Parse *input_path* returning a :class:`ParseResult`.
 
@@ -130,8 +130,7 @@ class BaseParser(ABC):
             input_path: Document path or URL to parse.
             output_format: Desired output format ("markdown" or "json"). If
                 *None*, the value from :pyattr:`settings.output_format` is used.
-            **kwargs: Additional parser-specific options forwarded to
-                :pyfunc:`_parse` implementations.
+            options: Additional parser-specific options
 
         The method transparently handles caching and post-processing, while
         delegating the heavy-lifting to the subtype-implemented
@@ -148,7 +147,7 @@ class BaseParser(ABC):
             self.settings.output_format = output_format
 
         try:
-            cache_key = self.generate_cache_key(input_path, **kwargs)
+            cache_key = self.generate_cache_key(input_path, options=options)
 
             if self.settings.use_cache:
                 cached_result = await cache_get(self.cache, cache_key)
@@ -160,7 +159,7 @@ class BaseParser(ABC):
                     return result
 
             # Delegate to concrete parser implementation
-            result = await self._parse(input_path, **kwargs)
+            result = await self._parse(input_path, options=options)
 
             # Post-proc if requested
             if self.settings.post_prompt:
@@ -179,7 +178,7 @@ class BaseParser(ABC):
     # Subclasses must implement the actual parsing logic here
     # ------------------------------------------------------------------
     @abstractmethod
-    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Concrete parsing logic for a single file path."""
         raise NotImplementedError
 
@@ -194,13 +193,13 @@ class BaseParser(ABC):
             True if file can be parsed, False otherwise
         """
 
-    def generate_cache_key(self, input_path: Path, **kwargs: Any) -> str:
+    def generate_cache_key(self, input_path: Path, *, options: BaseModel | None = None) -> str:
         """Return a stable cache key for *input_path* and current parser settings."""
         key_data = {
             "file": str(input_path.absolute()),
             "mtime": input_path.stat().st_mtime,
             "settings": self.settings.model_dump(),
-            "kwargs": kwargs,
+            "options": options.model_dump() if isinstance(options, BaseModel) else None,
         }
         key_str = json.dumps(key_data, sort_keys=True, default=str)
         return hashlib.sha256(key_str.encode()).hexdigest()
@@ -244,17 +243,17 @@ class BaseParser(ABC):
     # Convenience wrappers for explicit output modes
     # ------------------------------------------------------------------
 
-    async def parse_markdown(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def parse_markdown(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse *input_path* and return Markdown content.
 
         A thin wrapper around :pyfunc:`parse` that sets ``output_format`` to
         ``"markdown"`` without mutating global settings.
         """
-        return await self.parse(input_path, output_format="markdown", **kwargs)
+        return await self.parse(input_path, output_format="markdown", options=options)
 
-    async def parse_json(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def parse_json(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse *input_path* and return JSON content (as string)."""
-        return await self.parse(input_path, output_format="json", **kwargs)
+        return await self.parse(input_path, output_format="json", options=options)
 
     # ------------------------------------------------------------------
     # Class-level helpers

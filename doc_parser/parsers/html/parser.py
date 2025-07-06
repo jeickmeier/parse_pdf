@@ -39,6 +39,8 @@ from doc_parser.core.base import BaseParser, ParseResult
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import BaseModel
+
 MIN_RELATED_LEN = 10
 
 
@@ -87,7 +89,9 @@ class HtmlParser(BaseParser):
     # ------------------------------------------------------------------
     # Public high-level entry-point override to support URL strings
     # ------------------------------------------------------------------
-    async def parse(self, input_path: Path | str, **_kwargs: Any) -> ParseResult:
+    async def parse(
+        self, input_path: Path | str, *, output_format: str | None = None, options: BaseModel | None = None
+    ) -> ParseResult:
         """Parse input_path as local file or remote URL.
 
         Overrides BaseParser.parse to route HTTP/HTTPS inputs to parse_url
@@ -95,7 +99,8 @@ class HtmlParser(BaseParser):
 
         Args:
             input_path (Path | str): File path or URL string.
-            **_kwargs: Parser-specific options.
+            output_format (str | None): Output format for the parsed content.
+            options (BaseModel | None): Optional parser-specific options.
 
         Returns:
             ParseResult: Parsed content, metadata, format, and errors.
@@ -109,7 +114,7 @@ class HtmlParser(BaseParser):
         """
         # Handle URL strings directly
         if isinstance(input_path, str) and input_path.startswith(("http://", "https://")):
-            return await self.parse_url(input_path, **_kwargs)
+            return await self.parse_url(input_path, output_format=output_format, options=options)
 
         # Otherwise use the base implementation (expects Path)
         from pathlib import Path as _Path
@@ -117,7 +122,7 @@ class HtmlParser(BaseParser):
         if isinstance(input_path, str):
             input_path = _Path(input_path)
 
-        return await super().parse(input_path, **_kwargs)
+        return await super().parse(input_path, output_format=output_format, options=options)
 
     # ---------------------------------------------------------------------
     # Validation helpers
@@ -157,12 +162,12 @@ class HtmlParser(BaseParser):
     # ------------------------------------------------------------------
     # Public entry-points
     # ------------------------------------------------------------------
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse a local URL file and delegate to parse_url.
 
         Args:
             input_path (Path): Path to .url or .webloc file.
-            **_kwargs: Parser-specific options.
+            options (BaseModel | None): Optional parser-specific options.
 
         Returns:
             ParseResult: Result of parse_url or error if validation fails.
@@ -180,14 +185,17 @@ class HtmlParser(BaseParser):
                 errors=["Invalid URL file"],
             )
         url = await self._extract_url(input_path)
-        return await self.parse_url(url, **_kwargs)
+        return await self.parse_url(url, output_format=None, options=options)
 
-    async def parse_url(self, url: str, **_kwargs: Any) -> ParseResult:
+    async def parse_url(
+        self, url: str, *, output_format: str | None = None, options: BaseModel | None = None
+    ) -> ParseResult:
         """Fetch and parse a remote URL, returning structured ParseResult.
 
         Args:
             url (str): HTTP/HTTPS URL to fetch.
-            **_kwargs: Parser-specific options.
+            output_format (str | None): Output format for the parsed content.
+            options (BaseModel | None): Optional parser-specific options.
 
         Returns:
             ParseResult: Parsed content in Markdown or JSON, metadata, and errors.
@@ -200,7 +208,8 @@ class HtmlParser(BaseParser):
         """
         try:
             content_data = await self._fetch_and_parse(url)
-            if self.settings.output_format == "json":
+            effective_format = output_format or self.settings.output_format
+            if effective_format == "json":
                 import json as _json
 
                 content_str = _json.dumps(content_data, indent=2, ensure_ascii=False)
@@ -214,10 +223,11 @@ class HtmlParser(BaseParser):
                 "domain": urlparse(url).netloc,
                 "content_type": content_data.get("content_type", ""),
             }
+            _ = options
             return ParseResult(
                 content=content_str,
                 metadata=metadata,
-                output_format=self.settings.output_format,
+                output_format=effective_format,
             )
         except (TimeoutError, aiohttp.ClientError, ValueError) as exc:  # pragma: no cover
             return ParseResult(content="", metadata={"url": url}, errors=[str(exc)])

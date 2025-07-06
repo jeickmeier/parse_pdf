@@ -16,7 +16,7 @@ Examples:
 """
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -26,6 +26,9 @@ import pandas as pd
 from doc_parser.config import AppConfig
 from doc_parser.parsers.base_structured import BaseStructuredParser
 from doc_parser.utils.format_helpers import dataframe_to_markdown
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pydantic import BaseModel
 
 
 @AppConfig.register("excel", [".xlsx", ".xls", ".xlsm"])
@@ -94,8 +97,9 @@ class ExcelParser(BaseStructuredParser):
     # BaseStructuredParser hooks
     # ------------------------------------------------------------------
 
-    async def _open_document(self, input_path: Path, **_kwargs: Any) -> Path:
+    async def _open_document(self, input_path: Path, *, options: "BaseModel | None" = None) -> Path:
         """Return *input_path* so downstream helpers can open via pandas as needed."""
+        _ = options
         return input_path
 
     def _extra_metadata(self, input_path: Any) -> dict[str, Any]:

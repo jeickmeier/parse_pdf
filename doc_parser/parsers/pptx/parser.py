@@ -34,6 +34,8 @@ from doc_parser.utils.format_helpers import rows_to_markdown
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import BaseModel
+
 
 @AppConfig.register("pptx", [".pptx"])
 class PptxParser(BaseParser):
@@ -98,14 +100,14 @@ class PptxParser(BaseParser):
     # ------------------------------------------------------------------
     # Public entry-points
     # ------------------------------------------------------------------
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse a PPTX file and return a ParseResult.
 
         Iterates through slides, extracting content and caching results.
 
         Args:
             input_path (Path): Path to the PPTX file.
-            **kwargs: Additional parser options (unused).
+            options: Parser options object (currently unused for PPTX).
 
         Returns:
             ParseResult: Contains combined content, metadata, and format.
@@ -117,6 +119,7 @@ class PptxParser(BaseParser):
                 errors=[f"Invalid PPTX file: {input_path}"],
             )
 
+        _ = options  # unused currently
         prs = Presentation(str(input_path))
 
         slide_markdowns: list[str] = []

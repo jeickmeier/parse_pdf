@@ -16,6 +16,8 @@ from doc_parser.core.base import BaseParser, ParseResult
 if TYPE_CHECKING:  # pragma: no cover
     from pathlib import Path
 
+    from pydantic import BaseModel
+
 
 class BaseStructuredParser(BaseParser, ABC):
     """Shared helper base class for parsers that follow *open → extract → metadata* flow.
@@ -53,7 +55,7 @@ class BaseStructuredParser(BaseParser, ABC):
     # ------------------------------------------------------------------
     # Shared parsing skeleton
     # ------------------------------------------------------------------
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse *input_path* using the template method pattern.
 
         The workflow is:
@@ -73,7 +75,7 @@ class BaseStructuredParser(BaseParser, ABC):
             )
 
         try:
-            document_obj = await self._open_document(input_path, **_kwargs)
+            document_obj = await self._open_document(input_path, options=options)
 
             # Choose output format
             if self.settings.output_format == "markdown":
@@ -102,7 +104,7 @@ class BaseStructuredParser(BaseParser, ABC):
     # Abstract hooks - to be implemented by subclasses
     # ------------------------------------------------------------------
     @abstractmethod
-    async def _open_document(self, input_path: Path, **kwargs: Any) -> Any:
+    async def _open_document(self, input_path: Path, *, options: BaseModel | None = None) -> Any:
         """Open *input_path* and return a library-specific document object."""
 
     @abstractmethod

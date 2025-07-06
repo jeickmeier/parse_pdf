@@ -19,7 +19,7 @@ Examples:
 from collections.abc import Iterable
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import docx
 from docx.document import Document
@@ -30,6 +30,9 @@ from docx.text.paragraph import Paragraph
 from doc_parser.config import AppConfig
 from doc_parser.parsers.base_structured import BaseStructuredParser
 from doc_parser.utils.format_helpers import rows_to_markdown
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pydantic import BaseModel
 
 
 @AppConfig.register("docx", [".docx"])
@@ -95,8 +98,13 @@ class DocxParser(BaseStructuredParser):
     # BaseStructuredParser hooks
     # ------------------------------------------------------------------
 
-    async def _open_document(self, input_path: Path, **_kwargs: Any) -> Document:
-        """Open *input_path* with **python-docx** and return a Document object."""
+    async def _open_document(self, input_path: Path, *, options: "BaseModel | None" = None) -> Document:
+        """Open *input_path* with **python-docx** and return a Document object.
+
+        The *options* parameter is accepted for API compatibility but is not
+        used by the DOCX parser at this time.
+        """
+        _ = options  # future-proof - avoid unused-arg warnings
         return docx.Document(str(input_path))
 
     def _extra_metadata(self, doc: Any) -> dict[str, Any]:

@@ -7,6 +7,7 @@ from PIL import Image
 
 from doc_parser.config import AppConfig
 from doc_parser.parsers.pdf.parser import PDFParser
+from doc_parser.options import PdfOptions
 
 
 @pytest.mark.asyncio
@@ -85,7 +86,8 @@ async def test_pdf_parser_page_range(tmp_path, monkeypatch):
     )
 
     parser = PDFParser(AppConfig(use_cache=False))
-    _ = await parser.parse(pdf_path, page_range=(1, 1))
+    opts = PdfOptions(page_range=(1, 1))
+    _ = await parser.parse(pdf_path, options=opts)
 
     # convert_from_path should have received first_page / last_page args
     assert captured_kwargs.get("first_page") == 1

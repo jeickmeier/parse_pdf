@@ -1,6 +1,7 @@
 import asyncio
 from pathlib import Path
 from typing import Any
+from pydantic import BaseModel
 
 import pytest
 
@@ -18,7 +19,8 @@ class CountingParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D401
+        _ = options
         self.call_count += 1
         return ParseResult(content="dummy", metadata=self.get_metadata(input_path), output_format=self.settings.output_format)
 
