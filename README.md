@@ -20,11 +20,14 @@ pip install -e .[dev]
 
 ### Command-Line Interface (CLI)
 
-Parse a document to Markdown and save:
+Parse a document to Markdown and save (auto-loads configs from `DOC_PARSER_CONFIG` or `--config-file`):
 
 ```bash
 python -m doc_parser.cli parse path/to/document.pdf --format markdown -o output.md
 ```
+
+# Or with an external config file (TOML/JSON/YAML) overriding defaults
+python -m doc_parser.cli parse path/to/document.pdf -c cfg.toml
 
 Parse to JSON without using cache:
 
@@ -36,8 +39,8 @@ python -m doc_parser.cli parse path/to/file.docx --format json --no-cache
 
 ```python
 from pathlib import Path
-from doc_parser.core.settings import Settings
-from doc_parser.core.registry import ParserRegistry
+from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig as ParserRegistry
 
 # Configure global settings
 settings = Settings(output_format="markdown", use_cache=False)
@@ -60,7 +63,7 @@ Enable or disable persistent caching and configure cache parameters:
 ```python
 from pathlib import Path
 from datetime import timedelta
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 
 settings = Settings(
     use_cache=True,
@@ -94,7 +97,7 @@ Create and register new parsers for additional file types:
 ```python
 from pathlib import Path
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.core.registry import ParserRegistry
+from doc_parser.config import AppConfig as ParserRegistry
 
 @ParserRegistry.register("txt", [".txt"])
 class TextParser(BaseParser):

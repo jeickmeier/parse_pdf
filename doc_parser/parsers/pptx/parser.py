@@ -25,8 +25,8 @@ from pptx import Presentation  # type: ignore[import-not-found]
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 from pptx.exc import PackageNotFoundError  # type: ignore[import-not-found]
 
+from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.core.registry import ParserRegistry
 from doc_parser.utils.cache import cache_get, cache_set
 from doc_parser.utils.format_helpers import rows_to_markdown
 

@@ -23,12 +23,11 @@ Flags:
 
 ```python
 from pathlib import Path
-from doc_parser.core.config import ParserConfig
-from doc_parser.parsers import ParserRegistry
+from doc_parser.config import AppConfig, AppConfig as ParserRegistry
 
-cfg = ParserConfig(post_prompt="Extract all tables", response_model="mypkg.TableSchema")
-parser = ParserRegistry.get_parser(Path("report.pdf"), cfg)
-result = await parser.parse_with_cache(Path("report.pdf"))
+cfg = AppConfig(post_prompt="Extract all tables", response_model="mypkg.TableSchema")
+parser = ParserRegistry.from_path(Path("report.pdf"), cfg)
+result = await parser.parse(Path("report.pdf"))
 print(result.post_content)
 ```
 

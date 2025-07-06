@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 from doc_parser.utils.cache import CacheManager, cache_set, cache_get
 from doc_parser.utils.llm_post_processor import LLMPostProcessor
 

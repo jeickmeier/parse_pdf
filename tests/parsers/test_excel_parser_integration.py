@@ -5,7 +5,7 @@ from typing import Any
 import openpyxl
 import pytest
 
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 from doc_parser.parsers.excel.parser import ExcelParser
 
 

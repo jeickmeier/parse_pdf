@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 
 
 class DummyParser(BaseParser):

@@ -14,15 +14,14 @@ Examples:
 
 from __future__ import annotations
 
-from typing import TYPE_CHECKING
+from pathlib import Path  # required at runtime
+from typing import Any, cast
 
 import typer
 
-from .core.registry import ParserRegistry
-from .core.settings import Settings
+from .config import AppConfig as ParserRegistry, AppConfig as Settings
 
-if TYPE_CHECKING:
-    from pathlib import Path
+# For type checking only (avoid reimport warnings)
 
 app = typer.Typer(add_completion=False, help="Document parser CLI")
 
@@ -33,6 +32,51 @@ NO_CACHE_OPTION = typer.Option(False, "--no-cache", help="Disable cache for this
 POST_PROMPT_OPTION = typer.Option(None, "--post-prompt", help="LLM prompt for post-processing")
 OUTPUT_OPTION = typer.Option(None, "--output", "-o", help="File path to save output instead of stdout")
 
+# New configuration helpers
+CONFIG_FILE_OPTION = typer.Option(
+    None,
+    "--config-file",
+    "-c",
+    exists=True,
+    readable=True,
+    help="Optional JSON/TOML/YAML file with Settings overrides",
+)
+
+_ENV_CONFIG_PATH = "DOC_PARSER_CONFIG"
+
+
+def _load_config_file(path: Path | None) -> dict[str, Any]:
+    """Return dictionary from *path* (JSON / TOML / YAML)."""
+    import json
+    from pathlib import Path as _Path
+
+    if path is None:
+        return {}
+
+    path = _Path(path)
+    if not path.exists():
+        raise FileNotFoundError(path)
+
+    suffix = path.suffix.lower()
+    if suffix in {".json"}:
+        return cast("dict[str, Any]", json.loads(path.read_text()))
+    if suffix in {".toml"}:
+        try:
+            import tomllib as _toml
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            raise RuntimeError("TOML support requires Python 3.11+ or 'tomli' package") from exc
+        return _toml.loads(path.read_text())
+    if suffix in {".yaml", ".yml"}:
+        try:
+            import yaml as _yaml  # PyYAML
+        except ModuleNotFoundError as exc:  # pragma: no cover
+            raise RuntimeError("YAML support requires 'pyyaml' package") from exc
+        loaded = _yaml.safe_load(path.read_text()) or {}
+        if not isinstance(loaded, dict):
+            raise TypeError("YAML config must represent a mapping at top-level")
+        return cast("dict[str, Any]", loaded)
+    raise ValueError("Unsupported config file extension (use .json, .toml, .yaml)")
+
 
 @app.command()
 def parse(
@@ -41,6 +85,7 @@ def parse(
     no_cache: bool = NO_CACHE_OPTION,
     post_prompt: str | None = POST_PROMPT_OPTION,
     output: Path | None = OUTPUT_OPTION,
+    config_file: Path | None = CONFIG_FILE_OPTION,
 ) -> None:
     """Parse a document or URL and print or save the result.
 
@@ -53,6 +98,7 @@ def parse(
         no_cache (bool): If True, disables caching.
         post_prompt (Optional[str]): LLM prompt for post-processing.
         output (Optional[Path]): Destination file path for saving result.
+        config_file (Optional[Path]): Optional JSON/TOML/YAML file with Settings overrides.
 
     Examples:
         >>> # Parse PDF to markdown and print
@@ -62,7 +108,31 @@ def parse(
         >>> # Parse URL with a post-processing prompt
         >>> python -m doc_parser.cli parse example.url --post-prompt "Summarize content"
     """
-    settings = Settings(output_format=format, use_cache=not no_cache, post_prompt=post_prompt)
+    # ------------------------------------------------------------------
+    # Merge CLI / env / file overrides into Settings
+    # ------------------------------------------------------------------
+    import os
+
+    # 1) Load from --config-file or env path
+    file_cfg: dict[str, Any] = {}
+    cfg_path: Path | None = config_file
+    if cfg_path is None and (env_val := os.getenv(_ENV_CONFIG_PATH)):
+        cfg_path = Path(env_val)
+    if cfg_path is not None:
+        file_cfg = _load_config_file(cfg_path)
+
+    # 2) CLI overrides always win
+    cli_overrides: dict[str, Any] = {
+        "output_format": format,
+        "use_cache": not no_cache,
+        "post_prompt": post_prompt,
+    }
+    # Remove None values so they don't override file settings
+    cli_overrides = {k: v for k, v in cli_overrides.items() if v is not None}
+
+    merged_cfg = {**file_cfg, **cli_overrides}
+
+    settings = Settings(**merged_cfg)
 
     parser = ParserRegistry.from_path(file, settings)
 

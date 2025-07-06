@@ -2,7 +2,7 @@ from bs4 import BeautifulSoup
 import pytest
 import asyncio
 
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 from doc_parser.parsers.html.parser import HtmlParser
 
 

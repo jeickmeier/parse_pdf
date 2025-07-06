@@ -4,8 +4,7 @@ from typing import Any
 import pytest
 
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.core.registry import ParserRegistry
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
 from doc_parser.core.exceptions import UnsupportedFormatError
 
 

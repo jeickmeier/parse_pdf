@@ -5,7 +5,7 @@ import pytest
 from pptx import Presentation
 from pptx.util import Inches
 
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 from doc_parser.parsers.pptx.parser import PptxParser
 
 

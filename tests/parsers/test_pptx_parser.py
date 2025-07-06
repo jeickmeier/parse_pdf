@@ -8,8 +8,8 @@ import pytest
 from pptx import Presentation  # type: ignore
 from pptx.util import Inches
 
-from doc_parser.core.settings import Settings
-from doc_parser.core.registry import ParserRegistry
+from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig as ParserRegistry
 
 # mypy: ignore-errors
 

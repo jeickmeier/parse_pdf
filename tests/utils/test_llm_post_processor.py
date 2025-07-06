@@ -2,7 +2,7 @@
 
 import json
 
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig as Settings
 from doc_parser.prompts.base import PromptRegistry, PromptTemplate
 from doc_parser.utils.llm_post_processor import LLMPostProcessor
 

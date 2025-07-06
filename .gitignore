@@ -12,7 +12,7 @@ wheels/
 cache/
 outputs/
 .coverage*
-
+.env
 
 # Virtual environments
 .venv

@@ -15,8 +15,7 @@ from pathlib import Path
 from pptx import Presentation  # type: ignore
 from pptx.util import Inches  # type: ignore
 
-from doc_parser.core.registry import ParserRegistry
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig
 
 
 def _build_sample_pptx(path: Path) -> None:
@@ -70,8 +69,8 @@ async def _demo() -> None:
     _build_sample_pptx(sample_path)
 
     # Configure parser
-    cfg = Settings(output_format="markdown")
-    parser = ParserRegistry.from_path(sample_path, cfg)
+    cfg = AppConfig(output_format="markdown")
+    parser = AppConfig.from_path(sample_path, cfg)
 
     # Parse the PPTX file
     result = await parser.parse(sample_path)

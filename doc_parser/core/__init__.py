@@ -2,7 +2,6 @@
 
 from .base import BaseExtractor, BaseParser, ParseResult
 from .exceptions import ConfigurationError, ExtractionError, ParserError
-from .registry import ParserRegistry
 
 __all__ = [
     "BaseExtractor",
@@ -11,5 +10,4 @@ __all__ = [
     "ExtractionError",
     "ParseResult",
     "ParserError",
-    "ParserRegistry",
 ]

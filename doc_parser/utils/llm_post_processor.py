@@ -9,7 +9,7 @@ Classes:
 Examples:
     >>> import asyncio
     >>> from pathlib import Path
-    >>> from doc_parser.core.settings import Settings
+    >>> from doc_parser.config import AppConfig as Settings
     >>> from doc_parser.utils.llm_post_processor import LLMPostProcessor
     >>> settings = Settings(use_cache=False)
     >>> processor = LLMPostProcessor(settings)
@@ -31,7 +31,7 @@ from doc_parser.prompts.base import PromptRegistry, PromptTemplate
 from doc_parser.utils.cache import CacheManager, cache_get, cache_set
 
 if TYPE_CHECKING:
-    from doc_parser.core.settings import Settings
+    from doc_parser.config import AppConfig as Settings
 
 try:
     from pydantic import BaseModel
@@ -53,7 +53,7 @@ class LLMPostProcessor:
     Examples:
         >>> import asyncio
         >>> from pathlib import Path
-        >>> from doc_parser.core.settings import Settings
+        >>> from doc_parser.config import AppConfig as Settings
         >>> from doc_parser.utils.llm_post_processor import LLMPostProcessor
         >>> settings = Settings(use_cache=True, response_model=None)
         >>> processor = LLMPostProcessor(settings)

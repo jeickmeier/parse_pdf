@@ -27,9 +27,8 @@ from docx.opc.exceptions import PackageNotFoundError
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
+from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.core.registry import ParserRegistry
-from doc_parser.core.settings import Settings
 from doc_parser.utils.format_helpers import rows_to_markdown
 
 

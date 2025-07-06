@@ -33,13 +33,11 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 import html2text
 
+from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.core.registry import ParserRegistry
 
 if TYPE_CHECKING:
     from pathlib import Path
-
-    from doc_parser.core.settings import Settings
 
 MIN_RELATED_LEN = 10
 

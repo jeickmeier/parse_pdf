@@ -7,13 +7,9 @@ from pathlib import Path
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
-from doc_parser.core.registry import ParserRegistry
-from doc_parser.core.settings import Settings
-
-# mypy: ignore-errors
+from doc_parser.config import AppConfig
 
 logging.basicConfig(level=logging.INFO)
-
 
 class QuestionAnswer(BaseModel):
     """A model representing a question and its corresponding answer extracted from a document.
@@ -153,7 +149,7 @@ class DocumentSummary(BaseModel):
 async def main():
     load_dotenv() 
 
-    cfg = Settings(
+    cfg = AppConfig(
         post_prompt="Summarise the document using the following model: {{response_model}}",
         response_model="examples.post_processing_example.DocumentSummary",
         use_cache=False,
@@ -161,7 +157,7 @@ async def main():
     pdf_path = Path(
         "/Users/joneickmeier/Documents/Papers Library/JFDS-2025-Varlashova-jfds.2025.1.191.pdf"
     )  # Replace with your PDF
-    parser = ParserRegistry.from_path(pdf_path, cfg)
+    parser = AppConfig.from_path(pdf_path, cfg)
     result = await parser.parse(pdf_path)
     # print("Primary content length:", len(result.content))
     if result.post_content:

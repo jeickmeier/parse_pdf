@@ -40,10 +40,9 @@ from doc_parser.utils.cache import cache_get, cache_set
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from doc_parser.config import AppConfig as Settings
     from doc_parser.prompts.base import PromptTemplate
     from doc_parser.utils.cache import CacheManager
-
-    from .settings import Settings
 
 
 class ParseResult(BaseModel):

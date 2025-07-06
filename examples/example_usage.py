@@ -11,18 +11,18 @@ import asyncio
 from pathlib import Path
 
 from doc_parser import parsers  # noqa: F401
-from doc_parser.core.registry import ParserRegistry
-from doc_parser.core.settings import Settings
+from doc_parser.config import AppConfig
 
 
 async def example_basic_usage():
     """Basic usage example."""
     # Create configuration
-    config = Settings(
+    config = AppConfig(
         max_workers=10,
         model_name="gpt-4.1-mini",
         output_format="markdown",
         parser_settings={"pdf": {"dpi": 300, "batch_size": 1}},
+        use_cache=False,
     )
 
     # Parse a PDF file (using the existing hello.py as test)
@@ -31,7 +31,7 @@ async def example_basic_usage():
     )
     if pdf_path.exists():
         try:
-            parser = ParserRegistry.from_path(pdf_path, config)
+            parser = AppConfig.from_path(pdf_path, config)
             result = await parser.parse(pdf_path)
 
 
@@ -47,14 +47,14 @@ async def example_basic_usage():
 async def example_html_usage():
     """Example usage of HTML parser to parse a URL."""
     # Create configuration
-    config = Settings(
+    config = AppConfig(
         max_workers=10, model_name="gpt-4.1-mini", output_format="markdown"
     )
 
     url = "https://www.theglobeandmail.com/"
 
     try:
-        parser = ParserRegistry.from_path(url, config)
+        parser = AppConfig.from_path(url, config)
         # Directly parse the URL without creating any temporary files
         result = await parser.parse(url)
 
