@@ -57,6 +57,7 @@ target-version = "py312" # Ensure compatibility with Python 3.12
 exclude = [
     "tests/**",
     "concatenate_script.py",
+    "scripts/**",
     "examples/notebooks/**",
     ".cursor/**",
     ".mypy_cache/**",
@@ -154,7 +155,7 @@ max-complexity = 15
 python_version = "3.12"
 strict = true
 plugins = ['pydantic.mypy']
-exclude = '^(tests/|examples/|concatenate_script\.py$)'
+exclude = '^(tests/|examples/|scripts/|concatenate_script\.py$)'
 
 # Per-package overrides migrated from mypy.ini
 [[tool.mypy.overrides]]

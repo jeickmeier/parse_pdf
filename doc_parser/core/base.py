@@ -117,35 +117,63 @@ class BaseParser(ABC):
     # ------------------------------------------------------------------
     # Public high-level entry-point (caching baked-in)
     # ------------------------------------------------------------------
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def parse(
+        self,
+        input_path: Path,
+        *,
+        output_format: str | None = None,
+        **kwargs: Any,
+    ) -> ParseResult:
         """Parse *input_path* returning a :class:`ParseResult`.
 
-        The method transparently handles caching and post-processing, delegating
-        the actual heavy-lifting to the subtype-implemented :pyfunc:`_parse`.
+        Args:
+            input_path: Document path or URL to parse.
+            output_format: Desired output format ("markdown" or "json"). If
+                *None*, the value from :pyattr:`settings.output_format` is used.
+            **kwargs: Additional parser-specific options forwarded to
+                :pyfunc:`_parse` implementations.
+
+        The method transparently handles caching and post-processing, while
+        delegating the heavy-lifting to the subtype-implemented
+        :pyfunc:`_parse`. Providing *output_format* avoids mutating
+        ``settings.output_format`` at call-sites while maintaining backwards
+        compatibility for existing parsers that still reference the setting
+        during parsing.
         """
-        cache_key = self.generate_cache_key(input_path, **kwargs)
+        # ------------------------------------------------------------------
+        # Temporarily override settings.output_format (if provided)
+        # ------------------------------------------------------------------
+        original_format = self.settings.output_format
+        if output_format is not None:
+            self.settings.output_format = output_format
 
-        if self.settings.use_cache:
-            cached_result = await cache_get(self.cache, cache_key)
-            if cached_result:
-                result = ParseResult(**cached_result)
-                if self.settings.post_prompt and result.post_content is None:
-                    await self._run_post_processing(result)
-                    await cache_set(self.cache, cache_key, result.to_dict())
-                return result
+        try:
+            cache_key = self.generate_cache_key(input_path, **kwargs)
 
-        # Delegate to concrete parser implementation
-        result = await self._parse(input_path, **kwargs)
+            if self.settings.use_cache:
+                cached_result = await cache_get(self.cache, cache_key)
+                if cached_result:
+                    result = ParseResult(**cached_result)
+                    if self.settings.post_prompt and result.post_content is None:
+                        await self._run_post_processing(result)
+                        await cache_set(self.cache, cache_key, result.to_dict())
+                    return result
 
-        # Post-proc if requested
-        if self.settings.post_prompt:
-            await self._run_post_processing(result)
+            # Delegate to concrete parser implementation
+            result = await self._parse(input_path, **kwargs)
 
-        # Persist to cache
-        if self.settings.use_cache:
-            await cache_set(self.cache, cache_key, result.to_dict())
+            # Post-proc if requested
+            if self.settings.post_prompt:
+                await self._run_post_processing(result)
 
-        return result
+            # Persist to cache
+            if self.settings.use_cache:
+                await cache_set(self.cache, cache_key, result.to_dict())
+
+            return result
+        finally:
+            # Always restore original output_format to avoid side-effects
+            self.settings.output_format = original_format
 
     # ------------------------------------------------------------------
     # Subclasses must implement the actual parsing logic here
@@ -217,27 +245,16 @@ class BaseParser(ABC):
     # ------------------------------------------------------------------
 
     async def parse_markdown(self, input_path: Path, **kwargs: Any) -> ParseResult:
-        """Parse *input_path* and return markdown content.
+        """Parse *input_path* and return Markdown content.
 
-        This helper temporarily sets ``settings.output_format`` to ``"markdown"``
-        so individual parsers do not need to branch on custom arguments.  The
-        original value is restored afterward.
+        A thin wrapper around :pyfunc:`parse` that sets ``output_format`` to
+        ``"markdown"`` without mutating global settings.
         """
-        original = self.settings.output_format
-        self.settings.output_format = "markdown"
-        try:
-            return await self.parse(input_path, **kwargs)
-        finally:
-            self.settings.output_format = original
+        return await self.parse(input_path, output_format="markdown", **kwargs)
 
     async def parse_json(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """Parse *input_path* and return JSON content (as string)."""
-        original = self.settings.output_format
-        self.settings.output_format = "json"
-        try:
-            return await self.parse(input_path, **kwargs)
-        finally:
-            self.settings.output_format = original
+        return await self.parse(input_path, output_format="json", **kwargs)
 
     # ------------------------------------------------------------------
     # Class-level helpers
