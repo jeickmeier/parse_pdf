@@ -175,12 +175,75 @@ class BaseParser(ABC):
             self.settings.output_format = original_format
 
     # ------------------------------------------------------------------
-    # Subclasses must implement the actual parsing logic here
+    # Default structured parsing logic (validate → open → extract)
     # ------------------------------------------------------------------
-    @abstractmethod
     async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
-        """Concrete parsing logic for a single file path."""
+        """Default structured-document parsing implementation.
+
+        Subclasses can override for custom behaviour, or simply implement the helper hooks:
+
+        * validate_input
+        * _open_document
+        * _extract_as_markdown
+        * _extract_as_json
+        * _extra_metadata (optional)
+        """
+        # 1) Validate the input first
+        if not await self.validate_input(input_path):
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=[f"Invalid file: {input_path}"],
+            )
+
+        try:
+            # 2) Open the document using the subclass hook
+            document_obj = await self._open_document(input_path, options=options)
+
+            # 3) Extract content according to requested format
+            if self.settings.output_format == "markdown":
+                content = await self._extract_as_markdown(document_obj)
+            elif self.settings.output_format == "json":
+                content = await self._extract_as_json(document_obj)
+            else:
+                # Fallback to markdown for unsupported formats
+                content = await self._extract_as_markdown(document_obj)
+
+            # 4) Aggregate metadata
+            metadata = self.get_metadata(input_path)
+            metadata.update(self._extra_metadata(document_obj))
+
+            return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
+
+        except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
+            # Gracefully convert unexpected exception into a ParseResult so callers don't crash
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=[f"Failed to parse {input_path.name}: {exc!s}"],
+            )
+
+    # ------------------------------------------------------------------
+    # Hook methods for structured parsers
+    # ------------------------------------------------------------------
+    async def _open_document(self, input_path: Path, *, options: BaseModel | None = None) -> Any:
+        """Open *input_path* and return a third-party document object.
+
+        Structured parsers **must** override this. The base implementation just raises.
+        """
         raise NotImplementedError
+
+    async def _extract_as_markdown(self, document_obj: Any) -> str:
+        """Convert *document_obj* to Markdown. Must be overridden by structured parsers."""
+        raise NotImplementedError
+
+    async def _extract_as_json(self, document_obj: Any) -> str:
+        """Serialize *document_obj* to a JSON string. Must be overridden by structured parsers."""
+        raise NotImplementedError
+
+    def _extra_metadata(self, _document_obj: Any) -> dict[str, Any]:
+        """Return extra metadata dict; subclasses may override."""
+        return {}
 
     @abstractmethod
     async def validate_input(self, input_path: Path) -> bool:

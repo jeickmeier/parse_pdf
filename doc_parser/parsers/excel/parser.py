@@ -24,7 +24,7 @@ from openpyxl.utils.exceptions import InvalidFileException
 import pandas as pd
 
 from doc_parser.config import AppConfig
-from doc_parser.parsers.base_structured import BaseStructuredParser
+from doc_parser.core.base import BaseParser
 from doc_parser.utils.format_helpers import dataframe_to_markdown
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -32,7 +32,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 @AppConfig.register("excel", [".xlsx", ".xls", ".xlsm"])
-class ExcelParser(BaseStructuredParser):
+class ExcelParser(BaseParser):
     """Parser for Excel files (.xlsx, .xls, .xlsm).
 
     Args:

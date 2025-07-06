@@ -28,7 +28,7 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from doc_parser.config import AppConfig
-from doc_parser.parsers.base_structured import BaseStructuredParser
+from doc_parser.core.base import BaseParser
 from doc_parser.utils.format_helpers import rows_to_markdown
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -36,7 +36,7 @@ if TYPE_CHECKING:  # pragma: no cover
 
 
 @AppConfig.register("docx", [".docx"])
-class DocxParser(BaseStructuredParser):
+class DocxParser(BaseParser):
     """Parser for Microsoft Word documents (.docx).
 
     Provides methods to validate, parse, and extract content in Markdown or JSON formats.
