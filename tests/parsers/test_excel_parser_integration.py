@@ -42,7 +42,7 @@ async def test_excel_parser_markdown(make_sample_excel):
     assert "| Name | Age |" in result.content
     # Metadata checks
     assert result.metadata["sheet_count"] == 1
-    assert result.format == "markdown"
+    assert result.output_format == "markdown"
 
 
 @pytest.mark.asyncio

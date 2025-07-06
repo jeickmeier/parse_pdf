@@ -154,10 +154,7 @@ class CacheManager:
 
     async def get_size(self) -> int:
         """Get total cache size in bytes."""
-        total = 0
-        for path in self.cache_dir.glob("*.json"):
-            total += path.stat().st_size
-        return total
+        return sum(p.stat().st_size for p in self.cache_dir.glob("*.json"))
 
 
 # ---------------------------------------------------------------------------

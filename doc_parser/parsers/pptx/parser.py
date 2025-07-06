@@ -165,7 +165,7 @@ class PptxParser(BaseParser):
         return ParseResult(
             content=combined_content,
             metadata=metadata,
-            format=self.settings.output_format,
+            output_format=self.settings.output_format,
         )
 
     # ------------------------------------------------------------------

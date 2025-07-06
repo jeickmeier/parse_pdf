@@ -217,7 +217,7 @@ class HtmlParser(BaseParser):
             return ParseResult(
                 content=content_str,
                 metadata=metadata,
-                format=self.settings.output_format,
+                output_format=self.settings.output_format,
             )
         except (TimeoutError, aiohttp.ClientError, ValueError) as exc:  # pragma: no cover
             return ParseResult(content="", metadata={"url": url}, errors=[str(exc)])
@@ -379,15 +379,14 @@ class HtmlParser(BaseParser):
 
         data["content"] = self.h2t.handle(str(main_content))
 
-        if self.follow_links:
-            links: list[dict[str, str]] = []
-            for link in main_content.find_all("a", href=True):
-                if not isinstance(link, Tag):
-                    continue
-                href = str(link.get("href", ""))
-                if href.startswith("http"):
-                    links.append({"url": href, "text": link.get_text(strip=True)})
-            data["links"] = links[:20]
+        links: list[dict[str, str]] = []
+        for link in main_content.find_all("a", href=True):
+            if not isinstance(link, Tag):
+                continue
+            href = str(link.get("href", ""))
+            if href.startswith("http"):
+                links.append({"url": href, "text": link.get_text(strip=True)})
+        data["links"] = links[:20]
 
         images: list[dict[str, str]] = []
         for img in main_content.find_all("img", src=True):

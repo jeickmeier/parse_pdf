@@ -20,7 +20,7 @@ class CountingParser(BaseParser):
 
     async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
         self.call_count += 1
-        return ParseResult(content="dummy", metadata=self.get_metadata(input_path), format=self.settings.output_format)
+        return ParseResult(content="dummy", metadata=self.get_metadata(input_path), output_format=self.settings.output_format)
 
 
 @pytest.mark.asyncio
@@ -32,11 +32,11 @@ async def test_parse_markdown_and_json_wrappers(tmp_path):
 
     md_result = await parser.parse_markdown(file_path)
     assert md_result.content == "dummy"
-    assert md_result.format == "markdown"
+    assert md_result.output_format == "markdown"
 
     json_result = await parser.parse_json(file_path)
     assert json_result.content == "dummy"
-    assert json_result.format == "json"
+    assert json_result.output_format == "json"
 
 
 @pytest.mark.asyncio
@@ -77,7 +77,7 @@ async def test_post_processing_success(monkeypatch, tmp_path):
 
     result = await parser.parse(file_path)
     assert result.post_content == "processed"
-    assert result.post_errors == []
+    assert result.errors == []
 
 
 @pytest.mark.asyncio
@@ -101,4 +101,4 @@ async def test_post_processing_failure(monkeypatch, tmp_path):
 
     result = await parser.parse(file_path)
     assert result.post_content is None
-    assert result.post_errors and "Post-processing failed" in result.post_errors[0] 
+    assert any("Post-processing failed" in e for e in result.errors) 

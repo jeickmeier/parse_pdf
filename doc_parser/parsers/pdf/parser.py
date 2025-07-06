@@ -167,7 +167,7 @@ class PDFParser(BaseParser):
             "model": self.settings.model_name,
         })
 
-        return ParseResult(content=content, metadata=metadata, format=self.settings.output_format)
+        return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
 
     async def _pdf_to_images(self, pdf_path: Path, page_range: tuple[int, int] | None = None) -> list[Image.Image]:
         """Convert PDF pages to PIL Image objects.

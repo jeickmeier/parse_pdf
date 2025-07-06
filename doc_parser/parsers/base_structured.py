@@ -88,7 +88,7 @@ class BaseStructuredParser(BaseParser, ABC):
             metadata = self.get_metadata(input_path)
             metadata.update(self._extra_metadata(document_obj))
 
-            return ParseResult(content=content, metadata=metadata, format=self.settings.output_format)
+            return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
 
         except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
             # Convert any unexpected exception into a graceful ParseResult

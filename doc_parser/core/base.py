@@ -55,12 +55,19 @@ class ParseResult(BaseModel):
 
     content: str = ""
     metadata: dict[str, Any] = Field(default_factory=dict)
-    format: str = "markdown"
+    output_format: str = Field(default="markdown", alias="format")
     errors: list[str] = Field(default_factory=list)
 
     # Post-processing
     post_content: Any | None = None
-    post_errors: list[str] = Field(default_factory=list)
+
+    # ------------------------------------------------------------------
+    # Model configuration
+    # ------------------------------------------------------------------
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+    }
 
     # ------------------------------------------------------------------
     # Convenience helpers
@@ -80,7 +87,7 @@ class ParseResult(BaseModel):
         """Write *content* to *output_path* if ``format`` is markdown."""
         from pathlib import Path as _Path
 
-        if self.format != "markdown":
+        if self.output_format != "markdown":
             raise ValueError("save_markdown() called on non-markdown result")
         output_path = _Path(output_path)
         output_path.parent.mkdir(parents=True, exist_ok=True)
@@ -195,7 +202,7 @@ class BaseParser(ABC):
             logger.debug("Post-processing complete. Length=%s", len(str(result.post_content)))
         except Exception:  # pylint: disable=broad-except
             logger.exception("Post-processing failed")
-            result.post_errors.append("Post-processing failed")
+            result.errors.append("Post-processing failed")
 
     # ------------------------------------------------------------------
     # Backwards-compat internal alias — remove once all modules migrated.

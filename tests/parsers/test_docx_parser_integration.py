@@ -52,7 +52,7 @@ async def test_docx_parser_markdown(make_sample_docx):
     # metadata checks
     assert result.metadata["paragraphs"] >= 2
     assert result.metadata["tables"] == 1
-    assert result.format == "markdown"
+    assert result.output_format == "markdown"
 
 
 @pytest.mark.asyncio
