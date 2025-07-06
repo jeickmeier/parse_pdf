@@ -1,18 +1,52 @@
-# Python-generated files
+# macOS system files
+.DS_Store
+
+# Python bytecode and runtime artifacts
 __pycache__/
-*.py[oc]
+*.py[co]
+*.pyo
+*.pyd
+
+# Compiled C extensions
+*.so
+*.dylib
+
+# Distribution / packaging outputs
 build/
 dist/
 wheels/
-*.egg-info
+*.egg/
+*.egg-info/
+pip-wheel-metadata/
+
+# Virtual environments and local environment files
+.venv/
+.env/
+.env
+.env.*
+
+# Type checker, linter, and test caches
 .mypy_cache/
 .pytest_cache/
 .ruff_cache/
+.nox/
+.tox/
+
+# Coverage reports
+.coverage*
+coverage.xml
+htmlcov/
+
+# IDE / editor configuration
+a.idea/
 .vscode/
+
+# Project-specific generated data
 cache/
 outputs/
-.coverage*
-.env
 
-# Virtual environments
-.venv
+# Logs and temporary files
+*.log
+tmp/
+temp/
+*.tmp
