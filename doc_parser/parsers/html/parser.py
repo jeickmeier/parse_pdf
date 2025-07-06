@@ -23,6 +23,7 @@ Examples:
 
 from __future__ import annotations
 
+import logging
 import plistlib
 import re
 from typing import TYPE_CHECKING, Any
@@ -35,6 +36,7 @@ import html2text
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -206,6 +208,7 @@ class HtmlParser(BaseParser):
             >>> result = asyncio.run(parser.parse_url("http://example.com"))
             >>> print(result.metadata["domain"])
         """
+        logger = logging.getLogger(__name__)
         try:
             content_data = await self._fetch_and_parse(url)
             effective_format = output_format or self.settings.output_format
@@ -229,7 +232,8 @@ class HtmlParser(BaseParser):
                 metadata=metadata,
                 output_format=effective_format,
             )
-        except (TimeoutError, aiohttp.ClientError, ValueError) as exc:  # pragma: no cover
+        except EXPECTED_EXCEPTIONS as exc:  # pragma: no cover
+            logger.debug("Expected error while fetching URL %s: %s", url, exc, exc_info=True)
             return ParseResult(content="", metadata={"url": url}, errors=[str(exc)])
 
     # ------------------------------------------------------------------

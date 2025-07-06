@@ -27,6 +27,9 @@
 - Minimum supported Python version remains `>=3.12` (already enforced in `pyproject.toml`).
 - Unified prompt system; templates bundled in `doc_parser/prompts/templates` are now Markdown-only.
 - Documentation and examples updated accordingly.
+- **Fail-fast error-handling policy**: parsers now catch only *expected* errors declared in `doc_parser.core.error_policy` (IOError, ValueError, `aiohttp.ClientError`, PDF2Image exceptions, etc.).   Unexpected exceptions propagate to callers.
+- Debug-level logging on handled errors via the new `doc_parser.utils.logging_config` module (auto-configured; toggle with `DOC_PARSER_DEBUG=1`).
+- Unit tests (`tests/core/test_error_handling_policy.py`) validate the behaviour.
 
 ### Migration Guide
 

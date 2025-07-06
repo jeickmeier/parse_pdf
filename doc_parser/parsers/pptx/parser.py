@@ -18,6 +18,7 @@ Examples:
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -28,6 +29,7 @@ from pptx.exc import PackageNotFoundError
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.utils.cache import cache_get, cache_set
 from doc_parser.utils.mixins import TableMarkdownMixin
 
@@ -112,6 +114,8 @@ class PptxParser(TableMarkdownMixin, BaseParser):
         Returns:
             ParseResult: Contains combined content, metadata, and format.
         """
+        logger = logging.getLogger(__name__)
+
         if not await self.validate_input(input_path):
             return ParseResult(
                 content="",
@@ -119,57 +123,61 @@ class PptxParser(TableMarkdownMixin, BaseParser):
                 errors=[f"Invalid PPTX file: {input_path}"],
             )
 
-        _ = options  # unused currently
-        prs = Presentation(str(input_path))
+        try:
+            _ = options  # unused currently
+            prs = Presentation(str(input_path))
 
-        slide_markdowns: list[str] = []
-        slide_dicts: list[dict[str, Any]] = []
+            slide_markdowns: list[str] = []
+            slide_dicts: list[dict[str, Any]] = []
 
-        # Directory to save extracted images if enabled
-        images_dir = self.settings.output_dir / f"{input_path.stem}_images"
-        if self.extract_images:
-            images_dir.mkdir(parents=True, exist_ok=True)
+            # Directory to save extracted images if enabled
+            images_dir = self.settings.output_dir / f"{input_path.stem}_images"
+            if self.extract_images:
+                images_dir.mkdir(parents=True, exist_ok=True)
 
-        # Iterate through slides
-        for idx, slide in enumerate(prs.slides, start=1):
-            # Include output format in cache key so markdown & JSON caches do not collide
-            cache_key = f"{input_path.stem}_{self.settings.output_format}_slide_{idx}"
+            # Iterate through slides
+            for idx, slide in enumerate(prs.slides, start=1):
+                # Include output format in cache key so markdown & JSON caches do not collide
+                cache_key = f"{input_path.stem}_{self.settings.output_format}_slide_{idx}"
 
-            cached = await cache_get(self.cache, cache_key) if self.settings.use_cache else None
+                cached = await cache_get(self.cache, cache_key) if self.settings.use_cache else None
 
-            if cached:
-                # Cached content reuse
+                if cached:
+                    # Cached content reuse
+                    if self.settings.output_format == "json":
+                        slide_dicts.append(cached["data"])
+                    else:
+                        slide_markdowns.append(cached["content"])
+                    continue
+
+                # Fresh extraction
                 if self.settings.output_format == "json":
-                    slide_dicts.append(cached["data"])
+                    slide_data = self._slide_to_dict(slide, images_dir)
+                    slide_dicts.append(slide_data)
+                    await cache_set(self.cache, cache_key, {"data": slide_data})
                 else:
-                    slide_markdowns.append(cached["content"])
-                continue
+                    slide_md = self._slide_to_markdown(slide, images_dir)
+                    slide_markdowns.append(slide_md)
+                    await cache_set(self.cache, cache_key, {"content": slide_md})
 
-            # Fresh extraction
+            # Combine slide outputs
             if self.settings.output_format == "json":
-                slide_data = self._slide_to_dict(slide, images_dir)
-                slide_dicts.append(slide_data)
-                await cache_set(self.cache, cache_key, {"data": slide_data})
+                combined_content = json.dumps(slide_dicts, indent=2, ensure_ascii=False)
             else:
-                slide_md = self._slide_to_markdown(slide, images_dir)
-                slide_markdowns.append(slide_md)
-                await cache_set(self.cache, cache_key, {"content": slide_md})
+                delimiter = f"\n\n{self.slide_delimiter}\n\n"
+                combined_content = delimiter.join(slide_markdowns)
 
-        # Combine slide outputs
-        if self.settings.output_format == "json":
-            combined_content = json.dumps(slide_dicts, indent=2, ensure_ascii=False)
-        else:
-            delimiter = f"\n\n{self.slide_delimiter}\n\n"
-            combined_content = delimiter.join(slide_markdowns)
+            metadata = self.get_metadata(input_path)
+            metadata.update({"slides": len(prs.slides)})
 
-        metadata = self.get_metadata(input_path)
-        metadata.update({"slides": len(prs.slides)})
-
-        return ParseResult(
-            content=combined_content,
-            metadata=metadata,
-            output_format=self.settings.output_format,
-        )
+            return ParseResult(
+                content=combined_content,
+                metadata=metadata,
+                output_format=self.settings.output_format,
+            )
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Expected error while parsing PPTX %s: %s", input_path, exc, exc_info=True)
+            return ParseResult(content="", metadata=self.get_metadata(input_path), errors=[str(exc)])
 
     # ------------------------------------------------------------------
     # Helper methods

@@ -31,10 +31,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 import hashlib
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.utils.cache import cache_get, cache_set
 
 if TYPE_CHECKING:
@@ -215,8 +217,10 @@ class BaseParser(ABC):
 
             return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
 
-        except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
-            # Gracefully convert unexpected exception into a ParseResult so callers don't crash
+        except EXPECTED_EXCEPTIONS as exc:
+            # Gracefully handle *expected* errors; unexpected ones propagate.
+            logger = logging.getLogger(__name__)
+            logger.debug("Expected error while parsing %s: %s", input_path, exc, exc_info=True)
             return ParseResult(
                 content="",
                 metadata=self.get_metadata(input_path),
@@ -279,8 +283,6 @@ class BaseParser(ABC):
 
     async def _run_post_processing(self, result: ParseResult) -> None:
         """Helper to perform post-processing and attach to *result*."""
-        import logging
-
         logger = logging.getLogger(__name__)
         try:
             from doc_parser.utils.llm_post_processor import LLMPostProcessor
@@ -290,8 +292,8 @@ class BaseParser(ABC):
             prompt_arg: str = self.settings.post_prompt or ""
             result.post_content = await post_processor.process(result.content, prompt_arg)
             logger.debug("Post-processing complete. Length=%s", len(str(result.post_content)))
-        except Exception:  # pylint: disable=broad-except
-            logger.exception("Post-processing failed")
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Post-processing failed with expected error: %s", exc, exc_info=True)
             result.errors.append("Post-processing failed")
 
     # ------------------------------------------------------------------

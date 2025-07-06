@@ -231,6 +231,33 @@ python -m doc_parser.cli parse sample.pdf --page-range 1:5 --prompt-template "cu
 Other generic flags remain the same (`--format`, `--no-cache`, `--post-prompt`, etc.).
 
 ---
+## Error Handling & Debug Logging
+
+The library now follows a **fail-fast** philosophy:
+
+* Parsers only catch *expected* exceptions (IO, value, network, PDF-specific, etc.) declared in
+  `doc_parser.core.error_policy`.  These are re-packaged into the `errors` list of a
+  `ParseResult` so callers can decide what to do.
+* *Unexpected* errors propagate – they are no longer swallowed by a broad
+  `except Exception` block.  This surfaces real bugs earlier and simplifies debugging.
+* All handled errors are logged at **DEBUG** level just
+  before returning, so you can enable detailed traces by exporting
+  `DOC_PARSER_DEBUG=1` *before* running your script/CLI.
+
+The `doc_parser.utils.logging_config` module configures a sensible root logger
+on import.  You can override the level programmatically:
+
+```python
+from doc_parser.utils import logging_config
+
+logging_config.init(debug=True)  # or init(level=logging.WARNING)
+```
+
+For applications with their own logging setup simply import **doc_parser** *after*
+you have configured logging to avoid the auto-initialisation overriding your
+handlers.
+
+---
 ## Contributing
 
 Contributions are welcome! Please submit a pull request or open an issue at our GitHub repository.

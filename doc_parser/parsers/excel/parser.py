@@ -15,6 +15,7 @@ Examples:
 >>> assert "sheets" in result.metadata
 """
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -25,6 +26,7 @@ import pandas as pd
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.utils.mixins import DataFrameMarkdownMixin
 
 if TYPE_CHECKING:  # pragma: no cover
@@ -104,13 +106,15 @@ class ExcelParser(DataFrameMarkdownMixin, BaseParser):
 
     def _extra_metadata(self, input_path: Any) -> dict[str, Any]:
         """Return sheet names and count for quick metadata lookup."""
+        logger = logging.getLogger(__name__)
         try:
             excel_file = pd.ExcelFile(input_path)
             return {
                 "sheets": excel_file.sheet_names,
                 "sheet_count": len(excel_file.sheet_names),
             }
-        except Exception:  # pylint: disable=broad-except  # noqa: BLE001
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Expected error reading Excel metadata for %s: %s", input_path, exc, exc_info=True)
             return {}
 
     async def _extract_as_markdown(self, document_obj: Path) -> str:

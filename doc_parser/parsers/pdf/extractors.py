@@ -20,6 +20,7 @@ Examples:
 import asyncio
 import base64
 from io import BytesIO
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -27,6 +28,7 @@ from agents import Agent, Runner
 from PIL import Image
 
 from doc_parser.core.base import BaseExtractor
+from doc_parser.core.error_policy import EXPECTED_NETWORK_ERRORS
 from doc_parser.prompts import PromptTemplate
 
 
@@ -100,7 +102,12 @@ class VisionExtractor(BaseExtractor):
         image_base64 = base64.b64encode(buffered.getvalue()).decode()
 
         # Directly call the vision model through the Agents SDK
-        return await self._call_vision_api(prompt, image_base64)
+        logger = logging.getLogger(__name__)
+        try:
+            return await self._call_vision_api(prompt, image_base64)
+        except EXPECTED_NETWORK_ERRORS as exc:
+            logger.debug("Vision API call failed with expected network error: %s", exc, exc_info=True)
+            raise
 
     async def _extract_batch(
         self,
@@ -165,8 +172,13 @@ class VisionExtractor(BaseExtractor):
             }
         ]
 
-        result = await Runner.run(agent, messages)  # type: ignore[arg-type]
-        return str(result.final_output)
+        logger = logging.getLogger(__name__)
+        try:
+            result = await Runner.run(agent, messages)  # type: ignore[arg-type]
+            return str(result.final_output)
+        except EXPECTED_NETWORK_ERRORS as exc:
+            logger.debug("Vision API call failed with expected network error: %s", exc, exc_info=True)
+            raise
 
     def get_default_prompt(self) -> str:
         """Return the bundled default prompt for PDF vision extraction.

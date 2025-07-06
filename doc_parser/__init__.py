@@ -12,6 +12,7 @@ __version__ = "0.1.0"
 # module first.
 # ---------------------------------------------------------------------------
 from doc_parser.config import AppConfig
+from doc_parser.utils import logging_config  # noqa: F401  triggers auto-logging init
 
 from . import parsers as _builtin_parsers  # noqa: F401 unused-import
 from .core.base import BaseParser, ParseResult

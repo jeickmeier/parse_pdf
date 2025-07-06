@@ -26,6 +26,7 @@ Example:
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, cast
 
 from pdf2image import convert_from_path
@@ -33,6 +34,7 @@ from tqdm.asyncio import tqdm
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.options import PdfOptions
 from doc_parser.utils.async_batcher import RateLimiter
 from doc_parser.utils.cache import cache_get, cache_set
@@ -161,24 +163,34 @@ class PDFParser(BaseParser):
         page_range = pdf_opts.page_range
         prompt_template = pdf_opts.prompt_template
 
-        # Convert PDF to images
-        images = await self._pdf_to_images(input_path, page_range)
+        logger = logging.getLogger(__name__)
+        try:
+            # Convert PDF to images
+            images = await self._pdf_to_images(input_path, page_range)
 
-        # Process pages
-        results = await self._process_pages(images, input_path, cast("_PromptTemplate | None", prompt_template))
+            # Process pages
+            results = await self._process_pages(images, input_path, cast("_PromptTemplate | None", prompt_template))
 
-        # Combine results
-        content = self._combine_results(results)
+            # Combine results
+            content = self._combine_results(results)
 
-        # Build metadata
-        metadata = self.get_metadata(input_path)
-        metadata.update({
-            "pages": len(images),
-            "dpi": self.dpi,
-            "model": self.settings.model_name,
-        })
+            # Build metadata
+            metadata = self.get_metadata(input_path)
+            metadata.update({
+                "pages": len(images),
+                "dpi": self.dpi,
+                "model": self.settings.model_name,
+            })
 
-        return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
+            return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
+
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Expected error while parsing PDF %s: %s", input_path, exc, exc_info=True)
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=[f"Failed to parse {input_path.name}: {exc!s}"],
+            )
 
     async def _pdf_to_images(self, pdf_path: Path, page_range: tuple[int, int] | None = None) -> list[Image.Image]:
         """Convert PDF pages to PIL Image objects.

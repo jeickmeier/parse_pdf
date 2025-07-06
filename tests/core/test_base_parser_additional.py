@@ -101,6 +101,5 @@ async def test_post_processing_failure(monkeypatch, tmp_path):
     settings = AppConfig(use_cache=False, post_prompt="Prompt")
     parser = CountingParser(settings)
 
-    result = await parser.parse(file_path)
-    assert result.post_content is None
-    assert any("Post-processing failed" in e for e in result.errors) 
+    with pytest.raises(RuntimeError):
+        await parser.parse(file_path) 
