@@ -5,7 +5,7 @@ import pytest
 from pptx import Presentation
 from pptx.util import Inches
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.pptx.parser import PptxParser
 
 
@@ -41,7 +41,7 @@ def make_sample_pptx(tmp_path):  # noqa: D401
 async def test_pptx_parser_markdown(make_sample_pptx):
     pptx_path = make_sample_pptx()
 
-    settings = Settings(
+    settings = AppConfig(
         output_format="markdown",
         parser_settings={"pptx": {"extract_images": False, "slide_delimiter": "---"}},
     )
@@ -60,7 +60,7 @@ async def test_pptx_parser_markdown(make_sample_pptx):
 @pytest.mark.asyncio
 async def test_pptx_parser_json(make_sample_pptx):
     pptx_path = make_sample_pptx()
-    settings = Settings(output_format="json", use_cache=False, parser_settings={"pptx": {"extract_images": False}})
+    settings = AppConfig(output_format="json", use_cache=False, parser_settings={"pptx": {"extract_images": False}})
     parser = PptxParser(settings)
     result = await parser.parse(pptx_path)
     assert "\"title\"" in result.content
@@ -70,5 +70,5 @@ async def test_pptx_parser_json(make_sample_pptx):
 def test_pptx_validate_input_neg(tmp_path):
     fake = tmp_path / "file.txt"
     fake.write_text("x")
-    parser = PptxParser(Settings())
+    parser = PptxParser(AppConfig())
     assert asyncio.run(parser.validate_input(fake)) is False 

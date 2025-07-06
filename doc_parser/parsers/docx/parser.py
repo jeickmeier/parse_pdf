@@ -27,12 +27,12 @@ from docx.opc.exceptions import PackageNotFoundError
 from docx.table import Table
 from docx.text.paragraph import Paragraph
 
-from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.base_structured import BaseStructuredParser
 from doc_parser.utils.format_helpers import rows_to_markdown
 
 
-@ParserRegistry.register("docx", [".docx"])
+@AppConfig.register("docx", [".docx"])
 class DocxParser(BaseStructuredParser):
     """Parser for Microsoft Word documents (.docx).
 
@@ -57,7 +57,7 @@ class DocxParser(BaseStructuredParser):
         >>> assert "tables" in result.metadata
     """
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: AppConfig):
         """Initialize DOCX parser."""
         super().__init__(config)
 

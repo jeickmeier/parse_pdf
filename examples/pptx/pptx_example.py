@@ -12,8 +12,8 @@ from __future__ import annotations
 import asyncio
 from pathlib import Path
 
-from pptx import Presentation  # type: ignore
-from pptx.util import Inches  # type: ignore
+from pptx import Presentation
+from pptx.util import Inches
 
 from doc_parser.config import AppConfig
 

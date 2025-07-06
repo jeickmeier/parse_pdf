@@ -31,4 +31,4 @@ Your task is to convert the provided image into **valid Markdown** format.
 - Describe figures/charts in square brackets as placeholders: [Figure: Description].
 - For diagrams, create text-based representations when possible.
 
-{{additional_instructions_block}}
+{additional_instructions_block}

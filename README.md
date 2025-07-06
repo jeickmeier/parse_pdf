@@ -39,14 +39,13 @@ python -m doc_parser.cli parse path/to/file.docx --format json --no-cache
 
 ```python
 from pathlib import Path
-from doc_parser.config import AppConfig as Settings
-from doc_parser.config import AppConfig as ParserRegistry
+from doc_parser.config import AppConfig
 
 # Configure global settings
-settings = Settings(output_format="markdown", use_cache=False)
+settings = AppConfig(output_format="markdown", use_cache=False)
 
 # Instantiate parser based on file extension
-parser = ParserRegistry.from_path(Path("document.pdf"), settings)
+parser = AppConfig.from_path(Path("document.pdf"), settings)
 
 # Async parse (Python 3.11+)
 import asyncio
@@ -78,18 +77,47 @@ settings = Settings(
 
 ### Custom Prompts & Templates
 
-Leverage Jinja2 templates for fine-tuned extraction prompts:
+`doc_parser.prompts.PromptTemplate` makes it straightforward to work with pure
+Markdown templates that use **standard** `str.format` placeholders—no Jinja2
+dependency required:
 
 ```python
 from pathlib import Path
-from doc_parser.prompts.base import PromptTemplate, PromptRegistry
+from pydantic import BaseModel
+from doc_parser.prompts import PromptTemplate
 
-# Load and register a custom Jinja2 template
-template = PromptTemplate.from_file(Path("templates/custom_prompt.j2"))
-PromptRegistry.register("custom", template)
+class SummariseInput(BaseModel):
+    language: str = "en"
 
-# Use via CLI
-# python -m doc_parser.cli parse paper.pdf --post-prompt custom
+# Load template text from Markdown file (``.md`` recommended)
+tmpl = PromptTemplate.from_file(
+    Path("templates/summarise.md"),
+    input_schema=SummariseInput,
+)
+
+# Render the prompt for the LLM
+prompt_text = tmpl.render({"language": "fr"})
+
+# Pass via CLI
+# python -m doc_parser.cli parse paper.pdf --post-prompt "{prompt_text}"
+```
+
+### Prompt Template Management
+
+Since templates are plain files, you can ship additional templates by placing
+Markdown files in a directory and reading them at runtime:
+
+```python
+from pathlib import Path
+from pydantic import BaseModel
+from doc_parser.prompts import PromptTemplate
+
+class Empty(BaseModel):
+    pass  # Template expects no variables
+
+template_path = Path("my_templates/special_prompt.md")
+template = PromptTemplate.from_file(template_path, input_schema=Empty)
+print(template.render())
 ```
 
 ### Extending with Custom Parsers
@@ -105,11 +133,11 @@ few hook methods — no need to duplicate the validation/metadata boilerplate.
 from pathlib import Path
 import pandas as pd
 
-from doc_parser.config import AppConfig as ParserRegistry
+from doc_parser.config import AppConfig
 from doc_parser.parsers.base_structured import BaseStructuredParser
 
 
-@ParserRegistry.register("csv", [".csv"])
+@AppConfig.register("csv", [".csv"])
 class CsvParser(BaseStructuredParser):
     async def _open_document(self, input_path: Path, **_kw: object) -> pd.DataFrame:  # noqa: D401
         return pd.read_csv(input_path)
@@ -136,9 +164,9 @@ etc.), inherit directly from `BaseParser` instead:
 ```python
 from pathlib import Path
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.config import AppConfig as ParserRegistry
+from doc_parser.config import AppConfig
 
-@ParserRegistry.register("txt", [".txt"])
+@AppConfig.register("txt", [".txt"])
 class TextParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:
         return input_path.suffix == ".txt"
@@ -149,19 +177,6 @@ class TextParser(BaseParser):
             content=content,
             metadata=self.get_metadata(input_path)
         )
-```
-
-### Prompt Template Management
-
-Manage prompt templates programmatically:
-
-```python
-from pathlib import Path
-from doc_parser.prompts.base import PromptRegistry
-
-# Load bundled or local templates
-PromptRegistry.init(Path("doc_parser/prompts/templates"))
-print(PromptRegistry.list_templates())
 ```
 
 ---

@@ -5,7 +5,7 @@ from typing import Any
 import pytest
 from PIL import Image
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.pdf.parser import PDFParser
 
 
@@ -48,7 +48,7 @@ async def test_pdf_parser_parse_and_cache(tmp_path, monkeypatch):
     # ------------------------------------------------------------------
     # 4. Run parser twice – second run should hit cache (extract not called)
     # ------------------------------------------------------------------
-    settings = Settings(use_cache=True, cache_dir=tmp_path / "cache")
+    settings = AppConfig(use_cache=True, cache_dir=tmp_path / "cache")
     parser = PDFParser(settings)
 
     result1 = await parser.parse(pdf_path)
@@ -84,7 +84,7 @@ async def test_pdf_parser_page_range(tmp_path, monkeypatch):
         "doc_parser.parsers.pdf.parser.VisionExtractor.extract", fake_extract, raising=True
     )
 
-    parser = PDFParser(Settings(use_cache=False))
+    parser = PDFParser(AppConfig(use_cache=False))
     _ = await parser.parse(pdf_path, page_range=(1, 1))
 
     # convert_from_path should have received first_page / last_page args

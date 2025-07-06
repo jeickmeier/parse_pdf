@@ -15,7 +15,6 @@ dependencies = [
     "python-pptx>=0.6.0",
     "tqdm>=4.0",
     "pyyaml>=6.0",
-    "jinja2>=3.0",
     "aiofiles>=0.8",
     "beautifulsoup4>=4.9",
     "aiohttp>=3.8",
@@ -155,7 +154,7 @@ max-complexity = 15
 python_version = "3.12"
 strict = true
 plugins = ['pydantic.mypy']
-exclude = "^(tests/examples/|concatenate_script\\.py$)"
+exclude = '^(tests/|examples/|concatenate_script\.py$)'
 
 # Per-package overrides migrated from mypy.ini
 [[tool.mypy.overrides]]

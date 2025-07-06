@@ -20,7 +20,7 @@ from typing import Any, cast
 
 import typer
 
-from .config import AppConfig as ParserRegistry, AppConfig as Settings
+from .config import AppConfig
 
 # For type checking only (avoid reimport warnings)
 
@@ -133,9 +133,9 @@ def parse(
 
     merged_cfg = {**file_cfg, **cli_overrides}
 
-    settings = Settings(**merged_cfg)
+    settings = AppConfig(**merged_cfg)
 
-    parser = ParserRegistry.from_path(file, settings)
+    parser = AppConfig.from_path(file, settings)
 
     # Execute asynchronous parse via asyncio.run for CLI convenience
     result = asyncio.run(parser.parse(file))

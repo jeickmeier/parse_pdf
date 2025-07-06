@@ -9,7 +9,7 @@ Classes:
 Examples:
     >>> import asyncio
     >>> from pathlib import Path
-    >>> from doc_parser.config import AppConfig as Settings
+    >>> from doc_parser.config import AppConfig
     >>> from doc_parser.utils.llm_post_processor import LLMPostProcessor
     >>> settings = Settings(use_cache=False)
     >>> processor = LLMPostProcessor(settings)
@@ -27,11 +27,12 @@ from typing import TYPE_CHECKING, Any
 
 from agents import Agent, Runner
 
-from doc_parser.prompts.base import PromptRegistry, PromptTemplate
+from doc_parser.config import AppConfig
+from doc_parser.prompts import PromptTemplate  # noqa: F401 - imported for type hints / backwards-compat
 from doc_parser.utils.cache import CacheManager, cache_get, cache_set
 
 if TYPE_CHECKING:
-    from doc_parser.config import AppConfig as Settings
+    from doc_parser.config import AppConfig
 
 try:
     from pydantic import BaseModel
@@ -53,7 +54,7 @@ class LLMPostProcessor:
     Examples:
         >>> import asyncio
         >>> from pathlib import Path
-        >>> from doc_parser.config import AppConfig as Settings
+        >>> from doc_parser.config import AppConfig
         >>> from doc_parser.utils.llm_post_processor import LLMPostProcessor
         >>> settings = Settings(use_cache=True, response_model=None)
         >>> processor = LLMPostProcessor(settings)
@@ -61,7 +62,7 @@ class LLMPostProcessor:
         >>> print(output)
     """
 
-    def __init__(self, config: Settings, cache_manager: CacheManager | None = None):
+    def __init__(self, config: AppConfig, cache_manager: CacheManager | None = None):
         """Create a new post-processor.
 
         Args:
@@ -69,7 +70,7 @@ class LLMPostProcessor:
             cache_manager (CacheManager | None): Optional cache override. If omitted a
                 new `CacheManager` is created from ``config.cache_dir``.
         """
-        self.config: Settings = config
+        self.config: AppConfig = config
         self.cache = cache_manager or CacheManager(Path(config.cache_dir))
 
     # ------------------------------------------------------------------
@@ -131,20 +132,22 @@ class LLMPostProcessor:
     # Internal helpers
     # ------------------------------------------------------------------
     def _resolve_prompt(self, prompt_or_name: str) -> str:
-        """Resolve prompt text from registry or literal string.
+        """Resolve *prompt_or_name* into a final prompt string.
 
-        Args:
-            prompt_or_name (str): Registered template name or literal prompt.
+        The lookup strategy is now filesystem-based:
 
-        Returns:
-            str: Rendered prompt text ready for LLM.
+        1. If *prompt_or_name* corresponds to a file in
+           ``doc_parser/prompts/templates/<name>.md`` the file contents are
+           returned.
+        2. Otherwise the input string is treated as a *literal* prompt.
 
-        Example:
-            >>> text = processor._resolve_prompt("pdf_extraction")
+        This approach removes the legacy PromptRegistry dependency while still
+        supporting convenient shorthand names for bundled templates.
         """
-        template: PromptTemplate | None = PromptRegistry.get(prompt_or_name)
-        if template:
-            return template.render()
+        templates_dir = Path(__file__).resolve().parent.parent / "prompts" / "templates"
+        candidate = templates_dir / f"{prompt_or_name}.md"
+        if candidate.exists():
+            return candidate.read_text(encoding="utf-8")
         return prompt_or_name
 
     def _make_cache_key(self, primary_content: str, prompt: str) -> str:

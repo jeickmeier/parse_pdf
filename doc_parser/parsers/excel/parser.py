@@ -23,12 +23,12 @@ from openpyxl.utils import get_column_letter
 from openpyxl.utils.exceptions import InvalidFileException
 import pandas as pd
 
-from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.base_structured import BaseStructuredParser
 from doc_parser.utils.format_helpers import dataframe_to_markdown
 
 
-@ParserRegistry.register("excel", [".xlsx", ".xls", ".xlsm"])
+@AppConfig.register("excel", [".xlsx", ".xls", ".xlsm"])
 class ExcelParser(BaseStructuredParser):
     """Parser for Excel files (.xlsx, .xls, .xlsm).
 
@@ -55,7 +55,7 @@ class ExcelParser(BaseStructuredParser):
         'markdown'
     """
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: AppConfig):
         """Initialize Excel parser."""
         super().__init__(config)
 

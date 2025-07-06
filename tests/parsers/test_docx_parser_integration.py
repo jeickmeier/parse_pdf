@@ -4,7 +4,7 @@ from pathlib import Path
 import docx
 import pytest
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.docx.parser import DocxParser
 
 
@@ -37,7 +37,7 @@ def make_sample_docx(tmp_path):
 async def test_docx_parser_markdown(make_sample_docx):
     docx_path = make_sample_docx()
 
-    settings = Settings(
+    settings = AppConfig(
         output_format="markdown",
         parser_settings={"docx": {"extract_images": False}},
     )
@@ -59,7 +59,7 @@ async def test_docx_parser_markdown(make_sample_docx):
 async def test_docx_parser_json(make_sample_docx):
     docx_path = make_sample_docx()
 
-    settings = Settings(output_format="json")
+    settings = AppConfig(output_format="json")
     parser = DocxParser(settings)
 
     result = await parser.parse(docx_path)
@@ -71,5 +71,5 @@ def test_docx_validate_input_neg(tmp_path):
     fake_path = tmp_path / "not_docx.txt"
     fake_path.write_text("x")
 
-    parser = DocxParser(Settings())
+    parser = DocxParser(AppConfig())
     assert asyncio.run(parser.validate_input(fake_path)) is False 

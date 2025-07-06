@@ -20,13 +20,14 @@ Examples:
 import asyncio
 import base64
 from io import BytesIO
-from typing import Any, Union
+from pathlib import Path
+from typing import Any
 
 from agents import Agent, Runner
 from PIL import Image
 
 from doc_parser.core.base import BaseExtractor
-from doc_parser.prompts.base import PromptTemplate
+from doc_parser.prompts import PromptTemplate
 
 
 class VisionExtractor(BaseExtractor):
@@ -168,65 +169,36 @@ class VisionExtractor(BaseExtractor):
         return str(result.final_output)
 
     def get_default_prompt(self) -> str:
-        """Load and return the default Jinja2 prompt for PDF vision extraction.
+        """Return the bundled default prompt for PDF vision extraction.
 
-        Returns:
-            str: Rendered default prompt template.
-
-        Raises:
-            ValueError: If the default 'pdf_extraction' template is not registered.
-
-        Example:
-            >>> prompt = extractor.get_default_prompt()
+        The markdown template lives in
+        ``doc_parser/prompts/templates/pdf_extraction.md``.
         """
-        # Local import to avoid potential circular dependencies during package
-        # initialisation.
-        from doc_parser.prompts.base import PromptRegistry  # pylint: disable=import-outside-toplevel
+        templates_dir = Path(__file__).resolve().parent.parent.parent / "prompts" / "templates"
+        return (templates_dir / "pdf_extraction.md").read_text(encoding="utf-8")
 
-        template = PromptRegistry.get("pdf_extraction")
-        if template is None:
-            raise ValueError("Default prompt template 'pdf_extraction' not found in PromptRegistry.")
-
-        # Render with no extra variables; callers can still supply a
-        # PromptTemplate or template name via `prompt_template` to customise the
-        # prompt further.
-        return template.render()
-
-    def _get_prompt(self, prompt_template: Union["PromptTemplate", str] | None = None) -> str:
+    def _get_prompt(self, prompt_template: PromptTemplate | str | None = None) -> str:
         """Resolve and return the prompt text for extraction.
 
-        Args:
-            prompt_template (Optional[PromptTemplate | str]): PromptTemplate instance, registered name, or literal prompt.
+        The resolution order is:
 
-        Returns:
-            str: Final prompt text to send to the model.
-
-        Raises:
-            TypeError: If prompt_template is not None, a PromptTemplate, or str.
-
-        Example:
-            >>> prompt = extractor._get_prompt("pdf_extraction")
+        1. If *prompt_template* is *None*, return the default bundled template.
+        2. If a :class:`PromptTemplate` instance is provided, render it.
+        3. If a *str* is provided, first try to locate a markdown template file
+           named ``<str>.md`` inside the bundled templates directory.  If found,
+           return its contents; otherwise treat the string as a literal prompt.
         """
         if prompt_template is None:
             return self.get_default_prompt()
 
-        # If the caller provided an actual PromptTemplate instance
         if isinstance(prompt_template, PromptTemplate):
             return prompt_template.render()
 
-        # If a string was provided, try to interpret it as the name of a registered template.
         if isinstance(prompt_template, str):
-            try:
-                from doc_parser.prompts.base import PromptRegistry  # Local import to avoid circular deps
-
-                template = PromptRegistry.get(prompt_template)
-                if template is not None:
-                    return template.render()
-            except ImportError:
-                # Fallback handled below if registry lookup fails
-                pass
-            # Treat the string itself as the complete prompt text
+            templates_dir = Path(__file__).resolve().parent.parent.parent / "prompts" / "templates"
+            candidate = templates_dir / f"{prompt_template}.md"
+            if candidate.exists():
+                return candidate.read_text(encoding="utf-8")
             return prompt_template
 
-        # Unsupported type
         raise TypeError("prompt_template must be None, a PromptTemplate, or str")

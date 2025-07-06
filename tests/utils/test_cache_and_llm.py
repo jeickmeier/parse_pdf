@@ -4,7 +4,7 @@ from pathlib import Path
 
 import pytest
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.utils.cache import CacheManager, cache_set, cache_get
 from doc_parser.utils.llm_post_processor import LLMPostProcessor
 
@@ -19,7 +19,7 @@ async def test_cache_manager_roundtrip(tmp_path):
 
 @pytest.mark.asyncio
 async def test_llm_post_processor_basic(tmp_path):
-    settings = Settings(use_cache=True, cache_dir=tmp_path)
+    settings = AppConfig(use_cache=True, cache_dir=tmp_path)
     proc = LLMPostProcessor(settings)
 
     # First call should compute and cache and return non-empty string

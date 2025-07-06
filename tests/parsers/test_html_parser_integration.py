@@ -1,16 +1,14 @@
 import asyncio
-from pathlib import Path
-from typing import Any
 
 import pytest
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.html.parser import HtmlParser
 
 
 @pytest.fixture()
 def html_parser_full(tmp_path):  # noqa: D401
-    settings = Settings(use_cache=False, cache_dir=tmp_path / "cache")
+    settings = AppConfig(use_cache=False, cache_dir=tmp_path / "cache")
     return HtmlParser(settings)
 
 

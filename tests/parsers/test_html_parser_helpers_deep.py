@@ -2,13 +2,13 @@ import asyncio
 from bs4 import BeautifulSoup
 import pytest
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.html.parser import HtmlParser
 
 
 @pytest.fixture()
 def parser():
-    return HtmlParser(Settings())
+    return HtmlParser(AppConfig())
 
 
 # ---------------------------------------------------------------------------

@@ -8,8 +8,7 @@ import pytest
 from pptx import Presentation  # type: ignore
 from pptx.util import Inches
 
-from doc_parser.config import AppConfig as Settings
-from doc_parser.config import AppConfig as ParserRegistry
+from doc_parser.config import AppConfig
 
 # mypy: ignore-errors
 
@@ -44,8 +43,8 @@ def _create_temp_pptx(tmp_path: Path) -> Path:
 async def test_pptx_parser_markdown(tmp_path: Path) -> None:
     pptx_path = _create_temp_pptx(tmp_path)
 
-    cfg = Settings(output_format="markdown", use_cache=False)
-    parser = ParserRegistry.from_path(pptx_path, cfg)
+    cfg = AppConfig(output_format="markdown", use_cache=False)
+    parser = AppConfig.from_path(pptx_path, cfg)
 
     result = await parser.parse(pptx_path)
 
@@ -58,8 +57,8 @@ async def test_pptx_parser_markdown(tmp_path: Path) -> None:
 async def test_pptx_parser_json(tmp_path: Path) -> None:
     pptx_path = _create_temp_pptx(tmp_path)
 
-    cfg = Settings(output_format="json", use_cache=False)
-    parser = ParserRegistry.from_path(pptx_path, cfg)
+    cfg = AppConfig(output_format="json", use_cache=False)
+    parser = AppConfig.from_path(pptx_path, cfg)
 
     result = await parser.parse(pptx_path)
 

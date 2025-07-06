@@ -5,7 +5,7 @@ from typing import Any
 import openpyxl
 import pytest
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.excel.parser import ExcelParser
 
 
@@ -33,7 +33,7 @@ def make_sample_excel(tmp_path):  # noqa: D401
 async def test_excel_parser_markdown(make_sample_excel):
     xlsx_path = make_sample_excel()
 
-    settings = Settings(output_format="markdown")
+    settings = AppConfig(output_format="markdown")
     parser = ExcelParser(settings)
     result = await parser.parse(xlsx_path)
 
@@ -48,7 +48,7 @@ async def test_excel_parser_markdown(make_sample_excel):
 @pytest.mark.asyncio
 async def test_excel_parser_json(make_sample_excel):
     xlsx_path = make_sample_excel()
-    settings = Settings(output_format="json")
+    settings = AppConfig(output_format="json")
     parser = ExcelParser(settings)
     result = await parser.parse(xlsx_path)
 
@@ -60,5 +60,5 @@ async def test_excel_parser_json(make_sample_excel):
 def test_excel_validate_input_neg(tmp_path):
     fake = tmp_path / "file.txt"
     fake.write_text("x")
-    parser = ExcelParser(Settings())
+    parser = ExcelParser(AppConfig())
     assert asyncio.run(parser.validate_input(fake)) is False 

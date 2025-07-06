@@ -3,17 +3,16 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from doc_parser import cli as dp_cli
+from doc_parser.config import AppConfig
+from doc_parser.core.base import BaseParser, ParseResult
 
 # Ensure Path is available in annotations for Typer introspection
 dp_cli.Path = Path  # type: ignore[attr-defined]
 
 app = dp_cli.app
 
-from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
-from doc_parser.core.base import BaseParser, ParseResult
-
 # Register a lightweight parser for .txt (if not already registered)
-@ParserRegistry.register("txt_cli", [".txt"])
+@AppConfig.register("txt_cli", [".txt"])
 class TxtCliParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return True

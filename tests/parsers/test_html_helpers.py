@@ -2,13 +2,13 @@ from bs4 import BeautifulSoup
 import pytest
 import asyncio
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.html.parser import HtmlParser
 
 
 @pytest.fixture()
 def html_parser() -> HtmlParser:  # noqa: D401
-    return HtmlParser(Settings())
+    return HtmlParser(AppConfig())
 
 
 def test_extract_title_and_description(html_parser: HtmlParser):

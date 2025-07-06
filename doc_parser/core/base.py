@@ -40,8 +40,8 @@ from doc_parser.utils.cache import cache_get, cache_set
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from doc_parser.config import AppConfig as Settings
-    from doc_parser.prompts.base import PromptTemplate
+    from doc_parser.config import AppConfig
+    from doc_parser.prompts import PromptTemplate
     from doc_parser.utils.cache import CacheManager
 
 
@@ -90,10 +90,10 @@ class ParseResult(BaseModel):
 class BaseParser(ABC):
     """Abstract base class for all parsers."""
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: AppConfig) -> None:
         """Initialize BaseParser with specified settings."""
         # Public so downstream code can tweak if needed
-        self.settings: Settings = settings
+        self.settings: AppConfig = settings
 
         # Lazily initialised cache manager - created on first access
         self._cache_manager: CacheManager | None = None
@@ -200,9 +200,13 @@ class BaseParser(ABC):
     # ------------------------------------------------------------------
     # Backwards-compat internal alias — remove once all modules migrated.
     # ------------------------------------------------------------------
+    def _config_alias(self) -> AppConfig:
+        """Alias for *settings* (legacy)."""
+        return self.settings
+
     @property
-    def config(self) -> Settings:
-        """Alias for *settings* to minimise refactor changes downstream."""
+    def config(self) -> AppConfig:
+        """Alias property for settings (preferred)."""
         return self.settings
 
     # ------------------------------------------------------------------
@@ -241,7 +245,7 @@ class BaseParser(ABC):
         """Return list of supported extensions normalised by the registry.
 
         The attribute ``SUPPORTED_EXTENSIONS`` is attached automatically by
-        :pyfunc:`ParserRegistry.register`.  Subclasses can choose to override or
+        :pyfunc:`AppConfig.register`.  Subclasses can choose to override or
         extend this method if they need custom logic.
         """
         return getattr(cls, "SUPPORTED_EXTENSIONS", [])

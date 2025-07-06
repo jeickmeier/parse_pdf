@@ -2,7 +2,7 @@ from pathlib import Path
 from typing import Any
 
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 
 
 class DummyParser(BaseParser):
@@ -17,7 +17,7 @@ def test_generate_cache_key(tmp_path):
     file_path = tmp_path / "f.txt"
     file_path.write_text("x")
 
-    parser = DummyParser(Settings())
+    parser = DummyParser(AppConfig())
     key1 = parser.generate_cache_key(file_path)
 
     # Modify file to change mtime

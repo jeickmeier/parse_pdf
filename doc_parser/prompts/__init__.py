@@ -1,15 +1,9 @@
-"""Prompt template system for document parsers."""
+"""Public interface for prompt templates."""
 
-from pathlib import Path
+# Re-export the new **Pydantic v2** implementation
+from .models import PromptTemplate
 
-from .base import PromptRegistry, PromptTemplate
-
-# Automatically load bundled Jinja2 templates that live in the same package
-_default_templates_dir = Path(__file__).resolve().parent / "templates"
-if _default_templates_dir.exists():
-    PromptRegistry.init(_default_templates_dir)
-
-__all__ = [
-    "PromptRegistry",
+# Legacy *PromptRegistry* has been removed together with the Jinja2 implementation.
+__all__: list[str] = [
     "PromptTemplate",
 ]

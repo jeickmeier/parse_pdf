@@ -5,13 +5,13 @@ from pathlib import Path
 import pytest
 from bs4 import BeautifulSoup
 
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.parsers.html.parser import HtmlParser
 
 
 @pytest.fixture()
 def html_parser(tmp_path):  # noqa: D401
-    return HtmlParser(Settings(cache_dir=tmp_path / "cache"))
+    return HtmlParser(AppConfig(cache_dir=tmp_path / "cache"))
 
 
 # ---------------------------------------------------------------------------
@@ -92,7 +92,7 @@ async def test_parse_local_url_file(tmp_path, monkeypatch):
         "doc_parser.parsers.html.parser.HtmlParser._fetch_and_parse", fake_fetch, raising=True
     )
 
-    parser = HtmlParser(Settings())
+    parser = HtmlParser(AppConfig())
     result = await parser.parse(url_file)
     assert result.metadata["url"].startswith("https://host")
     assert "Body" in result.content 

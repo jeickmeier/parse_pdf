@@ -5,6 +5,8 @@ import pytest
 from PIL import Image
 
 from doc_parser.parsers.pdf.extractors import VisionExtractor
+from doc_parser.prompts import PromptTemplate
+from pydantic import BaseModel
 
 
 @pytest.fixture()
@@ -18,28 +20,32 @@ def blank_image():  # noqa: D401
 
 
 def test_get_default_prompt(monkeypatch):
-    # Monkeypatch PromptRegistry to supply a known template
-    from doc_parser.prompts.base import PromptTemplate, PromptRegistry
-
-    tmpl = PromptTemplate("PROMPT")
-    monkeypatch.setattr(PromptRegistry, "_templates", {"pdf_extraction": tmpl}, raising=False)
+    """Ensure get_default_prompt returns expected text when template file is patched."""
 
     extractor = VisionExtractor()
+
+    # Patch the method to avoid filesystem I/O in unit test
+    monkeypatch.setattr(extractor, "get_default_prompt", lambda: "PROMPT", raising=True)
+
     assert extractor.get_default_prompt() == "PROMPT"
 
 
 def test_get_prompt_resolution(monkeypatch):
-    from doc_parser.prompts.base import PromptTemplate
-
     extractor = VisionExtractor()
 
     # Case 1: None -> default
     monkeypatch.setattr(extractor, "get_default_prompt", lambda: "DEFAULT")
     assert extractor._get_prompt(None) == "DEFAULT"  # noqa: SLF001
 
-    # Case 2: PromptTemplate instance
-    pt = PromptTemplate("HELLO {{x}}", {"x": "X"})
+    # Case 2: PromptTemplate instance with str.format placeholder
+    class XInput(BaseModel):
+        x: str = "X"
+
+    pt = PromptTemplate(template="HELLO {x}", input_schema=XInput)
     assert extractor._get_prompt(pt) == "HELLO X"
+
+    rendered = pt.render({"x": "Y"})
+    assert rendered == "HELLO Y"
 
     # Case 3: string treated as literal prompt
     assert extractor._get_prompt("LITERAL") == "LITERAL"

@@ -21,11 +21,12 @@ import json
 from typing import TYPE_CHECKING, Any
 import uuid
 
-from pptx import Presentation  # type: ignore[import-not-found]
+# Importing python-pptx objects; these are available in runtime dependencies
+from pptx import Presentation
 from pptx.enum.shapes import MSO_SHAPE_TYPE
-from pptx.exc import PackageNotFoundError  # type: ignore[import-not-found]
+from pptx.exc import PackageNotFoundError
 
-from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.utils.cache import cache_get, cache_set
 from doc_parser.utils.format_helpers import rows_to_markdown
@@ -33,14 +34,8 @@ from doc_parser.utils.format_helpers import rows_to_markdown
 if TYPE_CHECKING:
     from pathlib import Path
 
-    from pptx.text.text import _BaseTextFrame
 
-    from doc_parser.core.settings import Settings
-
-# mypy: ignore-errors
-
-
-@ParserRegistry.register("pptx", [".pptx"])
+@AppConfig.register("pptx", [".pptx"])
 class PptxParser(BaseParser):
     """Parser for PowerPoint presentations (.pptx).
 
@@ -65,7 +60,7 @@ class PptxParser(BaseParser):
         >>> assert result.format == "markdown"
     """
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: AppConfig):
         """Initialize PPTX parser settings.
 
         Args:
@@ -247,7 +242,7 @@ class PptxParser(BaseParser):
         return data
 
     # ---------------- Text helpers ----------------
-    def _text_frame_to_markdown_lines(self, text_frame: _BaseTextFrame) -> list[str]:
+    def _text_frame_to_markdown_lines(self, text_frame: Any) -> list[str]:
         lines: list[str] = []
         for para in text_frame.paragraphs:
             txt = para.text.strip()

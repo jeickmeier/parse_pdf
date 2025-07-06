@@ -33,7 +33,7 @@ from bs4 import BeautifulSoup
 from bs4.element import Tag
 import html2text
 
-from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
+from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
 
 if TYPE_CHECKING:
@@ -42,7 +42,7 @@ if TYPE_CHECKING:
 MIN_RELATED_LEN = 10
 
 
-@ParserRegistry.register("html", [".html", ".htm", ".pplx", ".url", ".webloc"])
+@AppConfig.register("html", [".html", ".htm", ".pplx", ".url", ".webloc"])
 class HtmlParser(BaseParser):
     """Parser for HTML pages, Perplexity.ai exports, and generic web content.
 
@@ -69,7 +69,7 @@ class HtmlParser(BaseParser):
         >>> assert "## Links" in result.content
     """
 
-    def __init__(self, config: Settings):
+    def __init__(self, config: AppConfig):
         """Initialize HTML parser with configuration."""
         super().__init__(config)
 

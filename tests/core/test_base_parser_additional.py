@@ -5,13 +5,13 @@ from typing import Any
 import pytest
 
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.config import AppConfig as Settings
+from doc_parser.config import AppConfig
 
 
 class CountingParser(BaseParser):
     """Dummy parser that counts how many times _parse is executed."""
 
-    def __init__(self, settings: Settings):
+    def __init__(self, settings: AppConfig):
         super().__init__(settings)
         self.call_count = 0
 
@@ -28,7 +28,7 @@ async def test_parse_markdown_and_json_wrappers(tmp_path):
     file_path = tmp_path / "file.txt"
     file_path.write_text("x")
 
-    parser = CountingParser(Settings(use_cache=False))
+    parser = CountingParser(AppConfig(use_cache=False))
 
     md_result = await parser.parse_markdown(file_path)
     assert md_result.content == "dummy"
@@ -43,7 +43,7 @@ async def test_parse_markdown_and_json_wrappers(tmp_path):
 async def test_parse_caching(tmp_path):
     file_path = tmp_path / "f.txt"
     file_path.write_text("y")
-    settings = Settings(use_cache=True, cache_dir=tmp_path / "cache")
+    settings = AppConfig(use_cache=True, cache_dir=tmp_path / "cache")
     parser = CountingParser(settings)
 
     # First parse stores in cache
@@ -72,7 +72,7 @@ async def test_post_processing_success(monkeypatch, tmp_path):
 
     monkeypatch.setattr(lpp, "LLMPostProcessor", DummyLLM, raising=True)
 
-    settings = Settings(use_cache=False, post_prompt="Summarize")
+    settings = AppConfig(use_cache=False, post_prompt="Summarize")
     parser = CountingParser(settings)
 
     result = await parser.parse(file_path)
@@ -96,7 +96,7 @@ async def test_post_processing_failure(monkeypatch, tmp_path):
 
     monkeypatch.setattr(lpp, "LLMPostProcessor", FailingLLM, raising=True)
 
-    settings = Settings(use_cache=False, post_prompt="Prompt")
+    settings = AppConfig(use_cache=False, post_prompt="Prompt")
     parser = CountingParser(settings)
 
     result = await parser.parse(file_path)

@@ -112,7 +112,7 @@ class AppConfig(BaseModel):
         return self.parser_cfg(name)
 
     # ------------------------------------------------------------------
-    # Parser-registry methods (class-level) - mirror old ``ParserRegistry`` API
+    # Parser-registry methods (class-level) - mirror old ``AppConfig`` API
     # ------------------------------------------------------------------
     @classmethod
     def register(cls, name: str, extensions: list[str]) -> Callable[[type[BaseParser]], type[BaseParser]]:
@@ -227,7 +227,3 @@ def get_config(**overrides: Any) -> AppConfig:
     if _config_instance is None:
         _config_instance = AppConfig(**overrides)
     return _config_instance
-
-
-# Convenience alias so downstream code can still import ``Settings`` directly
-Settings = AppConfig
