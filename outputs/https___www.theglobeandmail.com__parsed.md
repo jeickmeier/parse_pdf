@@ -53,7 +53,7 @@ Weekend Reads### [Find solitude and tranquility on the windswept Îles-de-la-Mad
 
 ### [What to wear on vacation: 29 stylish Canadian picks for your next getaway](/life/style/article-what-to-wear-summer-vacation-canadian-picks/)
 
-### [‘Honestly, it’s gotten a lot worse’: Teen girls on the Hockey Canada trial and life after #MeToo](/canada/article-teen-girls-consent-sexual-harassment-hockey-canada-trial-me-too/)
+### [The Globe and Mail Bestsellers for the week of July 5, 2025](/arts/books/bestsellers/article-the-globe-and-mail-bestsellers-for-the-week-of-july-5-2025/)
 
 [secret canadaCanadian ERs closed their doors for at least 1.14 million hours since 2019, records show](/canada/article-secret-canada-emergency-rooms-closures-hospitals/)
 
@@ -123,9 +123,9 @@ Weekend Reads### [Find solitude and tranquility on the windswept Îles-de-la-Mad
 
 ## [The Winnipeg Folk Festival was supposed to be a one-time event. This year, it turns 50![The audience in the rain in 1997 at the Winnipeg Folk Festival, which is celebrating its 50th anniversary this year.](https://www.theglobeandmail.com/resizer/v2/NDLRE2PRD5EWTMUISNEMRHHMPM.jpg?auth=caf93acca88d30c74e67c27199c828e259994d7aee67f7baf849c4497f8d701b&width=300&height=200&quality=80&smart=true)](/arts/music/article-winnipeg-folk-festival-50-anniversary/)
 
-## [The Globe and Mail Bestsellers for the week of July 5, 2025![Books on the shelves](https://www.theglobeandmail.com/resizer/v2/B3XT5AKWRJAOVC4A4FXUXKFKU4.jpg?auth=69da57eb59c7f822bdcd38d7cc471f0371c83f38d31d1d25cc6c7cfccb2db833&width=300&height=200&quality=80&smart=true)](/arts/books/bestsellers/article-the-globe-and-mail-bestsellers-for-the-week-of-july-5-2025/)
-
 ## [Photography brings threats to oceans into focus![Torrents of cardinal fish race past the lens of photographer Cristina Mittermeier to avoid a Galápagos sea lion overhead. The shoot was the culmination of a multi-year campaign of work with Colombia, Costa Rica, Panama and Ecuador to create the world’s first interconnected marine protected area.](https://www.theglobeandmail.com/resizer/v2/54S4XHOFDZFM7HUK7MXMUE4F3Y.jpg?auth=2c4e404b6804d14aec70ef77ebf5923aaf3f4fe38d5cdabd81584f40dc6a4ef0&width=300&height=200&quality=80&smart=true)](/life/article-photography-brings-threats-to-oceans-into-focus/)
+
+## [Did you have a teenage romance? Share the story of your first love with The Globe![Studies have shown that the quality of our first teenage romances can establish expectations for future relationships.](https://www.theglobeandmail.com/resizer/v2/QZQOHFPTGZCHLNGJGGXNZRGHMQ.JPG?auth=89188b0e2cda320da7a3b4e3f1d35e58cd0315624f7c176d4e04aaa42ca82adf&width=300&height=200&quality=80&smart=true)](/life/relationships/article-teenage-romance-summer-love/)
 
 ## In the know
 
@@ -185,15 +185,13 @@ Weekend Reads### [Find solitude and tranquility on the windswept Îles-de-la-Mad
 
 ### [At least 43 dead in Texas floods, search for missing persons continues](/world/article-death-toll-texas-floods-missing-persons/)
 
-### [The Enhanced Games have found new sponsorship from Donald Trump Jr. What does this mean for sport?](/life/health-and-fitness/article-enhanced-games-sponsorship-trump-jr/)
-
 ### [Dictionary of Canadianisms offers more homegrown slang, from give’r to gong show](/canada/article-dictionary-of-canadianisms-updated-words-phrases/)
 
-### [Trump says tariff letters will be sent to 12 countries on Monday](/world/us-politics/article-trump-tariffs-trade-letters/)
+### [Move to the U.S. to avoid tariffs? These Canadian companies say no way – we’re expanding at home](/business/article-canadian-companies-expansion-plans-us-tariffs/)
+
+### [The (alleged) anatomy of the $10-million heist that rocked Canadian music](/arts/music/article-canadian-music-alleged-heist-factor/)
 
 ## In case you missed it
-
-[good tasteGen Z’s alcohol consumption is growing in Canada, report showsChristopher Waters![Members of the Black Bourbon Society sample whiskeys from Rabbit Hole Distillery in Louisville, Kentucky, April 28, 2019. The society organized a brunch to celebrate the history of black horse jockeys while tasting spirits at distilleries. \(Aaron Borton/The New York Times\)](https://www.theglobeandmail.com/resizer/v2/46ANM5PU7VER5KV76RZJUPOKIQ.JPG?auth=5eeb35e3099035aa49977c44d807ae607939be9ce3d425302cdda72955b8b44e&width=300&height=200&quality=80&smart=true)](/life/food-and-wine/article-gen-zs-alcohol-consumption-is-growing-in-canada-report-shows/)
 
 [film reviewExplosive Canadian thriller 40 Acres asks just what it takes to keep our land glorious and freeBarry Hertz![Danielle Deadwyler as Hailey Freeman in 40 ACRES, a film by R.T. Thorne, photo credit: Rafy, courtesy of Mongrel MediaHailey Freeman \(Danielle Deadwyler\) and her family are the last descendants of African American farmers who settled in rural Canada after the first Civil War. In a famine-decimated near future, they now struggle to safeguard their farm against those hell-bent on taking their 40 ACRES.](https://www.theglobeandmail.com/resizer/v2/QOSMAOOZWNBVXO3YYMANTNA6IY.JPG?auth=49e9bb320c02115712e747490c1dd298b3f86dfd3f8dd41d048bacee5c7b2e13&width=300&height=200&quality=80&smart=true)](/arts/film/reviews/article-40-acres-thriller-rt-thorne-debut/)
 
@@ -201,21 +199,23 @@ Weekend Reads### [Find solitude and tranquility on the windswept Îles-de-la-Mad
 
 [opinionHow much longer will Ottawa keep blundering on tech policy?Michael Geist![Minister of Finance and National Revenue François-Philippe Champagne speaks to reporters ahead of a cabinet meeting on Parliament Hill in Ottawa, on Tuesday, June 10, 2025. THE CANADIAN PRESS/Spencer Colby](https://www.theglobeandmail.com/resizer/v2/6RCGUTS6C5AGTHYKWVDYTTRKXU.JPG?auth=360f99c4075d63395de69cf377c8095c835cca2c4849955072b98c5512d6342a&width=300&height=200&quality=80&smart=true)](/business/commentary/article-how-much-longer-will-ottawa-keep-blundering-on-tech-policy/)
 
+### [Art dealer moved $450,000 worth of Morrisseau fakes, new court document reveals![Jim White was one of eight people arrested in 2023 in a police investigation into two counterfeiting rings that produced and sold thousands of forged Morrisseaus.](https://www.theglobeandmail.com/resizer/v2/MF4QTYB2URG4ZALQMCLIWHI2SM.JPG?auth=7a5421864c6dc52d4351e63c40c092434fbcb932237ec97f792d2eace290fa91&width=300&height=200&quality=80&smart=true)](/canada/article-art-dealer-moved-450000-worth-of-morrisseau-fakes-new-court-document/)
+
 ## Sections
 
 ### [Canada](/canada/)
 
-[![Changes to Manitoba's child welfare system aimed at keeping more families together are now in effect. Nahanni Fontaine speaks in the house  during question and answer period at the Legislative Building on Wednesday, May 20, 2020. THE CANADIAN PRESS/Ruth Bonneville - POOL](https://www.theglobeandmail.com/resizer/v2/NO77VSTFDJGWZESQQWGIC635HA.JPG?auth=091948ff935e34199d4d24265165c141bd0233a31493de7fb92301eecdf944ff&width=300&height=200&quality=80&smart=true)Manitoba’s Accessibility Minister apologizes for ‘demeaning’ comment about sign-language interpreter](/canada/article-manitobas-accessibility-minister-apologizes-for-demeaning-comment/)
-
-#### [Accused in High Park sex assault in Toronto was on probation for robbery](/canada/article-accused-in-high-park-sex-assault-in-toronto-was-on-probation-for/)
+[![Pedestrians pass through High Park in Toronto, where a woman was allegedly assaulted on a paved pathway on the night of June 4.](https://www.theglobeandmail.com/resizer/v2/C3HYCF325FFEBH3QFWKSUKFHPE.JPG?auth=82d62fc08251d69cfc2994043902204ae3b0aae51b3ff1e3f03d5da2c7ec809c&width=300&height=200&quality=80&smart=true)Accused in High Park sex assault in Toronto was on probation for robbery](/canada/article-accused-in-high-park-sex-assault-in-toronto-was-on-probation-for/)
 
 #### [Halifax man sentenced to life in prison for killing mother after dispute over video](/canada/article-halifax-man-sentenced-life-prison-killing-mother/)
+
+#### [Manitoba’s Accessibility Minister apologizes for ‘demeaning’ comment about sign-language interpreter](/canada/article-manitobas-accessibility-minister-apologizes-for-demeaning-comment/)
 
 ### [World](/world/)
 
 [![U.S. President Donald Trump speaks to members of the media on board Air Force One on the way to New Jersey, U.S., July 4, 2025. REUTERS/Nathan Howard](https://www.theglobeandmail.com/resizer/v2/HRT4I2AUNFFBZKOQMKDSYRQ3UY.JPG?auth=c4402e4a6cb93062d8fa3db7d441191c5db81a50de91fe90e33d2f8405fea966&width=300&height=200&quality=80&smart=true)Trump says Ukraine needs Patriot missiles after Zelensky call, chides Putin](/world/us-politics/article-trump-zelensky-putin-ukraine-patriot/)
 
-#### [Israeli airstrikes kill 24 Palestinians in Gaza after ceasefire momentum builds](/world/article-israel-gaza-airstrikes-ceasefire/)
+#### [Trump says tariff letters will be sent to 12 countries on Monday](/world/us-politics/article-trump-tariffs-trade-letters/)
 
 #### [Police arrest suspect in shooting of Colombian senator and presidential candidate](/world/article-senator-uribe-shooting-suspect-arrested-colombia/)
 

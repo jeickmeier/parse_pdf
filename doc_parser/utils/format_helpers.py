@@ -59,7 +59,7 @@ def rows_to_markdown(rows: Sequence[Sequence[str]]) -> str:
     lines.append("| " + " | ".join(["-" * max(3, len(h)) for h in header]) + " |")
 
     # Use extend for performance when adding rows
-    lines.extend(f"| {" | ".join(row)} |" for row in rows[1:])
+    lines.extend(f"| {' | '.join(row)} |" for row in rows[1:])
     return "\n".join(lines)
 
 

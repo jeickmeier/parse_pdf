@@ -64,16 +64,20 @@ def _build_sample_pptx(path: Path) -> None:
 
 
 async def _demo() -> None:
+    # Ensure output directory exists and generate sample PPTX
     sample_path = Path("outputs/sample_demo.pptx")
+    sample_path.parent.mkdir(parents=True, exist_ok=True)
+    _build_sample_pptx(sample_path)
+
+    # Configure parser
     cfg = Settings(output_format="markdown")
     parser = ParserRegistry.from_path(sample_path, cfg)
 
-    # Run parser synchronously for demo purposes
-    async def _main():
-        await parser.parse(sample_path)
+    # Parse the PPTX file
+    result = await parser.parse(sample_path)
 
-    if __name__ == "__main__":  # pragma: no cover
-        asyncio.run(_main())
+    # Print the resulting Markdown to stdout
+    print(result.content)
 
 
 if __name__ == "__main__":

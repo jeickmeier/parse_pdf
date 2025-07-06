@@ -4,6 +4,7 @@ import asyncio
 import logging
 from pathlib import Path
 
+from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from doc_parser.core.registry import ParserRegistry
@@ -131,28 +132,31 @@ class DocumentSummary(BaseModel):
     )
 
     @field_validator("authors", mode="before")
-    def ensure_authors_list(self, v):
+    def ensure_authors_list(cls, v):
         if isinstance(v, str):
             return [v]
         return v
 
     @field_validator("date", mode="before")
-    def ensure_date(self, v):
+    def ensure_date(cls, v):
         if v is None:
             return ""
         return v
 
     @field_validator("publisher", mode="before")
-    def ensure_publisher(self, v):
+    def ensure_publisher(cls, v):
         if v is None:
             return ""
         return v
 
 
 async def main():
+    load_dotenv() 
+
     cfg = Settings(
         post_prompt="Summarise the document using the following model: {{response_model}}",
         response_model="examples.post_processing_example.DocumentSummary",
+        use_cache=False,
     )
     pdf_path = Path(
         "/Users/joneickmeier/Documents/Papers Library/JFDS-2025-Varlashova-jfds.2025.1.191.pdf"
@@ -166,9 +170,16 @@ async def main():
         from pydantic import BaseModel  # Local import to avoid unused-import warnings
 
         if isinstance(result.post_content, BaseModel):
-            pass
+            print(
+                "\nPost-processed output:\n",
+                result.post_content.model_dump_json(indent=2),
+            )
         else:
-            pass
+            import json
+            print(
+                "\nPost-processed output:\n",
+                json.dumps(result.post_content, indent=2, default=str),
+            )
 
 
 

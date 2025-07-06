@@ -418,21 +418,21 @@ class HtmlParser(BaseParser):
         """
         parts: list[str] = []
         if content_data.get("title"):
-            parts.append(f"# {content_data["title"]}")
+            parts.append(f"# {content_data['title']}")
         parts.append(f"**URL:** {url}")
         if content_data.get("description"):
-            parts.append(f"\n*{content_data["description"]}*")
+            parts.append(f"\n*{content_data['description']}*")
         parts.append("\n---\n")
 
         if content_data.get("is_perplexity"):
             if content_data.get("query"):
-                parts.append(f"## Query\n\n{content_data["query"]}")
+                parts.append(f"## Query\n\n{content_data['query']}")
             if content_data.get("answer"):
-                parts.append(f"## Answer\n\n{content_data["answer"]}")
+                parts.append(f"## Answer\n\n{content_data['answer']}")
             if content_data.get("sources") and self.extract_sources:
                 parts.append("## Sources\n")
                 for i, src in enumerate(content_data["sources"], 1):
-                    parts.append(f"{i}. [{src["title"]}]({src["url"]})")
+                    parts.append(f"{i}. [{src['title']}]({src['url']})")
             if content_data.get("related_questions"):
                 parts.append("\n## Related Questions\n")
                 parts.extend(f"- {q}" for q in content_data["related_questions"])
@@ -441,7 +441,7 @@ class HtmlParser(BaseParser):
                 parts.append(content_data["content"])
             if content_data.get("links") and self.follow_links:
                 parts.append("\n## Links\n")
-                parts.extend(f"- [{link["text"]}]({link["url"]})" for link in content_data["links"][:10])
+                parts.extend(f"- [{link['text']}]({link['url']})" for link in content_data["links"][:10])
         return "\n\n".join(parts)
 
     # ---------------- utility extractors -------------------------------

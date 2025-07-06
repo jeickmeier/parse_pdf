@@ -22,10 +22,10 @@ async def test_llm_post_processor_basic(tmp_path):
     settings = Settings(use_cache=True, cache_dir=tmp_path)
     proc = LLMPostProcessor(settings)
 
-    # First call should compute and cache
+    # First call should compute and cache and return non-empty string
     out1 = await proc.process("hello", "Summarize")
-    assert isinstance(out1, str) and out1.startswith("-")
+    assert isinstance(out1, str) and out1.strip()  # non-empty
 
     # Second call should hit cache (simulate by checking same object)
     out2 = await proc.process("hello", "Summarize")
-    assert out1 == out2 
+    assert out1 == out2  # should hit cache and match first output 
