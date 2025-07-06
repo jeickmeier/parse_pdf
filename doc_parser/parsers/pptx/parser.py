@@ -29,7 +29,7 @@ from pptx.exc import PackageNotFoundError
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.utils.cache import cache_get, cache_set
-from doc_parser.utils.format_helpers import rows_to_markdown
+from doc_parser.utils.mixins import TableMarkdownMixin
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -38,7 +38,7 @@ if TYPE_CHECKING:
 
 
 @AppConfig.register("pptx", [".pptx"])
-class PptxParser(BaseParser):
+class PptxParser(TableMarkdownMixin, BaseParser):
     """Parser for PowerPoint presentations (.pptx).
 
     Extracts slide text, tables, images, and notes into Markdown or JSON.
@@ -257,11 +257,6 @@ class PptxParser(BaseParser):
         return lines
 
     # ---------------- Table helpers ----------------
-    def _table_to_markdown(self, table: Any) -> str:
-        """Convert a table shape to Markdown."""
-        rows = [[cell.text_frame.text.strip() for cell in row.cells] for row in table.rows]
-        return rows_to_markdown(rows)
-
     def _table_to_list(self, table: Any) -> list[list[str]]:
         return [[cell.text_frame.text.strip() for cell in row.cells] for row in table.rows]
 

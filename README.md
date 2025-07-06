@@ -179,6 +179,28 @@ class TextParser(BaseParser):
         )
 ```
 
+#### Shared helper mixins
+
+To avoid duplicating common helper code, the library exposes two mixins:
+
+* `TableMarkdownMixin` – provides a `_table_to_markdown(table)` method that
+  handles both **python-docx** and **python-pptx** table objects.
+* `DataFrameMarkdownMixin` – provides a `_dataframe_to_markdown(df)` method
+  that wraps the standard `utils.format_helpers.dataframe_to_markdown` utility.
+
+Simply add the mixin before `BaseParser` in your subclass' inheritance list and
+call the helper inside your extraction logic:
+
+```python
+from doc_parser.utils.mixins import TableMarkdownMixin
+from doc_parser.core.base import BaseParser
+
+class MyDocxVariantParser(TableMarkdownMixin, BaseParser):
+    async def _extract_as_markdown(self, doc):
+        md_tables = [self._table_to_markdown(t) for t in doc.tables]
+        return "\n\n".join(md_tables)
+```
+
 ---
 ## Typed Options API
 

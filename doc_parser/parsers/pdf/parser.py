@@ -414,14 +414,3 @@ class PDFParser(BaseParser):
             cleaned_lines.append(line)
 
         return "\n".join(cleaned_lines)
-
-    def _has_supported_extension(self, input_path: Path) -> bool:
-        """Check if the input path has a supported file extension.
-
-        Args:
-            input_path (Path): Path to the file.
-
-        Returns:
-            bool: True if the file has a supported extension, False otherwise.
-        """
-        return super()._has_supported_extension(input_path)

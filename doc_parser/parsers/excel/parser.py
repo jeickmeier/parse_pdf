@@ -25,14 +25,14 @@ import pandas as pd
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser
-from doc_parser.utils.format_helpers import dataframe_to_markdown
+from doc_parser.utils.mixins import DataFrameMarkdownMixin
 
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic import BaseModel
 
 
 @AppConfig.register("excel", [".xlsx", ".xls", ".xlsm"])
-class ExcelParser(BaseParser):
+class ExcelParser(DataFrameMarkdownMixin, BaseParser):
     """Parser for Excel files (.xlsx, .xls, .xlsm).
 
     Args:
@@ -215,24 +215,6 @@ class ExcelParser(BaseParser):
             data[sheet_name] = sheet_data
 
         return json.dumps(data, indent=2, default=str)
-
-    def _dataframe_to_markdown(self, df: pd.DataFrame) -> str:
-        """Convert a pandas DataFrame to a GitHub-flavored Markdown table.
-
-        Args:
-            df (pd.DataFrame): DataFrame to convert.
-
-        Returns:
-            str: Markdown table as string.
-
-        Example:
-            >>> import pandas as pd
-            >>> from doc_parser.parsers.excel.parser import ExcelParser
-            >>> df = pd.DataFrame([[1, 2], [3, 4]])
-            >>> md = ExcelParser(Settings())._dataframe_to_markdown(df)
-            >>> assert "|" in md
-        """
-        return dataframe_to_markdown(df)
 
     async def _extract_formulas(self, input_path: Path, sheet_name: str) -> dict[str, str]:
         """Extract cell formulas from a specific sheet of an Excel file.

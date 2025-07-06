@@ -29,14 +29,14 @@ from docx.text.paragraph import Paragraph
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser
-from doc_parser.utils.format_helpers import rows_to_markdown
+from doc_parser.utils.mixins import TableMarkdownMixin
 
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic import BaseModel
 
 
 @AppConfig.register("docx", [".docx"])
-class DocxParser(BaseParser):
+class DocxParser(TableMarkdownMixin, BaseParser):
     """Parser for Microsoft Word documents (.docx).
 
     Provides methods to validate, parse, and extract content in Markdown or JSON formats.
@@ -298,11 +298,6 @@ class DocxParser(BaseParser):
 
         return text
 
-    def _table_to_markdown(self, table: Table) -> str:
-        """Convert a table to Markdown."""
-        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
-        return rows_to_markdown(rows)
-
     def _extract_headers_footers(self, doc: Document) -> str:
         """Extract headers and footers from document."""
         content = []
@@ -321,6 +316,3 @@ class DocxParser(BaseParser):
                     content.append(f"**Footer:** {footer_text}")
 
         return "\n".join(content)
-
-    def _has_supported_extension(self, input_path: Path) -> bool:
-        return super()._has_supported_extension(input_path)

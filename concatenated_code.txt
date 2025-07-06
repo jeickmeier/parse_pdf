@@ -59,6 +59,7 @@ from typing import Any, cast
 import typer
 
 from .config import AppConfig
+from .options import PdfOptions
 
 # For type checking only (avoid reimport warnings)
 
@@ -70,6 +71,18 @@ FORMAT_OPTION = typer.Option("markdown", "--format", "-f", help="Output format: 
 NO_CACHE_OPTION = typer.Option(False, "--no-cache", help="Disable cache for this run")
 POST_PROMPT_OPTION = typer.Option(None, "--post-prompt", help="LLM prompt for post-processing")
 OUTPUT_OPTION = typer.Option(None, "--output", "-o", help="File path to save output instead of stdout")
+
+# PDF-specific options
+PAGE_RANGE_OPTION = typer.Option(
+    None,
+    "--page-range",
+    help="For PDFs: inclusive 1-based page range, e.g. '1:3'",
+)
+PROMPT_TEMPLATE_OPTION = typer.Option(
+    None,
+    "--prompt-template",
+    help="Custom prompt template (string or template ID) for extraction (PDF only).",
+)
 
 # New configuration helpers
 CONFIG_FILE_OPTION = typer.Option(
@@ -124,6 +137,8 @@ def parse(
     no_cache: bool = NO_CACHE_OPTION,
     post_prompt: str | None = POST_PROMPT_OPTION,
     output: Path | None = OUTPUT_OPTION,
+    page_range: str | None = PAGE_RANGE_OPTION,
+    prompt_template: str | None = PROMPT_TEMPLATE_OPTION,
     config_file: Path | None = CONFIG_FILE_OPTION,
 ) -> None:
     """Parse a document or URL and print or save the result.
@@ -137,6 +152,8 @@ def parse(
         no_cache (bool): If True, disables caching.
         post_prompt (Optional[str]): LLM prompt for post-processing.
         output (Optional[Path]): Destination file path for saving result.
+        page_range (Optional[str]): For PDFs: inclusive 1-based page range, e.g. '1:3'.
+        prompt_template (Optional[str]): Custom prompt template (string or template ID) for extraction (PDF only).
         config_file (Optional[Path]): Optional JSON/TOML/YAML file with Settings overrides.
 
     Examples:
@@ -175,8 +192,30 @@ def parse(
 
     parser = AppConfig.from_path(file, settings)
 
+    # ------------------------------------------------------------------
+    # Build typed options object based on parser type
+    # ------------------------------------------------------------------
+    options_obj: Any | None = None
+    from doc_parser.parsers.pdf.parser import PDFParser  # local import to avoid heavy deps on startup
+
+    if isinstance(parser, PDFParser):
+        # Page range conversion if provided
+        pr: tuple[int, int] | None = None
+        if page_range:
+            try:
+                parts = page_range.split(":")
+                if len(parts) == 2:  # noqa: PLR2004
+                    pr = (int(parts[0]), int(parts[1]))
+                else:
+                    raise ValueError
+            except ValueError as exc:  # pragma: no cover
+                typer.echo("--page-range must be of form START:END", err=True)
+                raise typer.Exit(1) from exc
+
+        options_obj = PdfOptions(page_range=pr, prompt_template=prompt_template)
+
     # Execute asynchronous parse via asyncio.run for CLI convenience
-    result = asyncio.run(parser.parse(file))
+    result = asyncio.run(parser.parse(file, options=options_obj))
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)
@@ -566,7 +605,7 @@ class BaseParser(ABC):
         input_path: Path,
         *,
         output_format: str | None = None,
-        **kwargs: Any,
+        options: BaseModel | None = None,
     ) -> ParseResult:
         """Parse *input_path* returning a :class:`ParseResult`.
 
@@ -574,8 +613,7 @@ class BaseParser(ABC):
             input_path: Document path or URL to parse.
             output_format: Desired output format ("markdown" or "json"). If
                 *None*, the value from :pyattr:`settings.output_format` is used.
-            **kwargs: Additional parser-specific options forwarded to
-                :pyfunc:`_parse` implementations.
+            options: Additional parser-specific options
 
         The method transparently handles caching and post-processing, while
         delegating the heavy-lifting to the subtype-implemented
@@ -592,7 +630,7 @@ class BaseParser(ABC):
             self.settings.output_format = output_format
 
         try:
-            cache_key = self.generate_cache_key(input_path, **kwargs)
+            cache_key = self.generate_cache_key(input_path, options=options)
 
             if self.settings.use_cache:
                 cached_result = await cache_get(self.cache, cache_key)
@@ -604,7 +642,7 @@ class BaseParser(ABC):
                     return result
 
             # Delegate to concrete parser implementation
-            result = await self._parse(input_path, **kwargs)
+            result = await self._parse(input_path, options=options)
 
             # Post-proc if requested
             if self.settings.post_prompt:
@@ -620,12 +658,75 @@ class BaseParser(ABC):
             self.settings.output_format = original_format
 
     # ------------------------------------------------------------------
-    # Subclasses must implement the actual parsing logic here
+    # Default structured parsing logic (validate → open → extract)
     # ------------------------------------------------------------------
-    @abstractmethod
-    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
-        """Concrete parsing logic for a single file path."""
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
+        """Default structured-document parsing implementation.
+
+        Subclasses can override for custom behaviour, or simply implement the helper hooks:
+
+        * validate_input
+        * _open_document
+        * _extract_as_markdown
+        * _extract_as_json
+        * _extra_metadata (optional)
+        """
+        # 1) Validate the input first
+        if not await self.validate_input(input_path):
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=[f"Invalid file: {input_path}"],
+            )
+
+        try:
+            # 2) Open the document using the subclass hook
+            document_obj = await self._open_document(input_path, options=options)
+
+            # 3) Extract content according to requested format
+            if self.settings.output_format == "markdown":
+                content = await self._extract_as_markdown(document_obj)
+            elif self.settings.output_format == "json":
+                content = await self._extract_as_json(document_obj)
+            else:
+                # Fallback to markdown for unsupported formats
+                content = await self._extract_as_markdown(document_obj)
+
+            # 4) Aggregate metadata
+            metadata = self.get_metadata(input_path)
+            metadata.update(self._extra_metadata(document_obj))
+
+            return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
+
+        except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
+            # Gracefully convert unexpected exception into a ParseResult so callers don't crash
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=[f"Failed to parse {input_path.name}: {exc!s}"],
+            )
+
+    # ------------------------------------------------------------------
+    # Hook methods for structured parsers
+    # ------------------------------------------------------------------
+    async def _open_document(self, input_path: Path, *, options: BaseModel | None = None) -> Any:
+        """Open *input_path* and return a third-party document object.
+
+        Structured parsers **must** override this. The base implementation just raises.
+        """
         raise NotImplementedError
+
+    async def _extract_as_markdown(self, document_obj: Any) -> str:
+        """Convert *document_obj* to Markdown. Must be overridden by structured parsers."""
+        raise NotImplementedError
+
+    async def _extract_as_json(self, document_obj: Any) -> str:
+        """Serialize *document_obj* to a JSON string. Must be overridden by structured parsers."""
+        raise NotImplementedError
+
+    def _extra_metadata(self, _document_obj: Any) -> dict[str, Any]:
+        """Return extra metadata dict; subclasses may override."""
+        return {}
 
     @abstractmethod
     async def validate_input(self, input_path: Path) -> bool:
@@ -638,13 +739,13 @@ class BaseParser(ABC):
             True if file can be parsed, False otherwise
         """
 
-    def generate_cache_key(self, input_path: Path, **kwargs: Any) -> str:
+    def generate_cache_key(self, input_path: Path, *, options: BaseModel | None = None) -> str:
         """Return a stable cache key for *input_path* and current parser settings."""
         key_data = {
             "file": str(input_path.absolute()),
             "mtime": input_path.stat().st_mtime,
             "settings": self.settings.model_dump(),
-            "kwargs": kwargs,
+            "options": options.model_dump() if isinstance(options, BaseModel) else None,
         }
         key_str = json.dumps(key_data, sort_keys=True, default=str)
         return hashlib.sha256(key_str.encode()).hexdigest()
@@ -688,17 +789,17 @@ class BaseParser(ABC):
     # Convenience wrappers for explicit output modes
     # ------------------------------------------------------------------
 
-    async def parse_markdown(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def parse_markdown(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse *input_path* and return Markdown content.
 
         A thin wrapper around :pyfunc:`parse` that sets ``output_format`` to
         ``"markdown"`` without mutating global settings.
         """
-        return await self.parse(input_path, output_format="markdown", **kwargs)
+        return await self.parse(input_path, output_format="markdown", options=options)
 
-    async def parse_json(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def parse_json(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse *input_path* and return JSON content (as string)."""
-        return await self.parse(input_path, output_format="json", **kwargs)
+        return await self.parse(input_path, output_format="json", options=options)
 
     # ------------------------------------------------------------------
     # Class-level helpers
@@ -911,6 +1012,131 @@ __all__ = [
 
 
 ================================================================================
+File: doc_parser/options.py
+================================================================================
+
+"""Option objects for parser runtime configuration.
+
+These classes replace the previous ad-hoc ``**kwargs`` mechanism that passed
+miscellaneous options into ``BaseParser.parse``.  Each parser now receives a
+strongly-typed options object, improving validation and static type-checking.
+"""
+
+from __future__ import annotations
+
+from pydantic import BaseModel, Field, validator  # Pydantic v1 compatible
+
+# Standard library
+
+# ----------------------------------------------------------------------------
+# Shared helpers
+# ----------------------------------------------------------------------------
+
+PageRange = tuple[int, int]
+
+
+class _BaseOptions(BaseModel):  # pylint: disable=too-few-public-methods
+    """Common ancestor to allow isinstance checks across option objects."""
+
+    class Config:  # pylint: disable=too-few-public-methods
+        arbitrary_types_allowed = True
+        allow_population_by_field_name = True
+        validate_assignment = True
+        extra = "forbid"  # Disallow unexpected kwargs to catch typos early.
+
+
+# ----------------------------------------------------------------------------
+# Parser-specific option models
+# ----------------------------------------------------------------------------
+
+
+class PdfOptions(_BaseOptions):
+    """Run-time options specific to the PDF parser."""
+
+    page_range: PageRange | None = Field(
+        default=None,
+        description="Inclusive 1-based (start, end) page range to extract.  If\n        *None*, the full document is processed.",
+    )
+    prompt_template: str | None = Field(
+        default=None,
+        description="Custom prompt template (template string or ID) used during\n        downstream LLM summarisation, if applicable.",
+    )
+
+    # Ensure correct ordering of the tuple and positive indices
+    @validator("page_range")
+    def _validate_page_range(cls, v: PageRange | None) -> PageRange | None:  # noqa: N805
+        if v is None:
+            return v
+        start, end = v
+        if start <= 0 or end <= 0:
+            raise ValueError("page_range values must be positive and 1-based")
+        if start > end:
+            raise ValueError("page_range start must be <= end")
+        return v
+
+
+class HtmlOptions(_BaseOptions):
+    """Run-time options specific to the HTML parser."""
+
+    extract_sources: bool | None = Field(
+        default=None,
+        description="Whether to include source links embedded in the page content.",
+    )
+    follow_links: bool | None = Field(
+        default=None,
+        description="If *True*, the parser will crawl linked pages up to\n        *max_depth*.",
+    )
+    max_depth: int | None = Field(
+        default=None,
+        ge=1,
+        description="Maximum recursion depth when *follow_links* is *True*.",
+    )
+
+
+class DocxOptions(_BaseOptions):
+    """Run-time options specific to the DOCX parser."""
+
+    extract_images: bool | None = Field(default=None)
+    extract_headers_footers: bool | None = Field(default=None)
+    preserve_formatting: bool | None = Field(default=None)
+
+
+class ExcelOptions(_BaseOptions):
+    """Run-time options specific to the Excel parser."""
+
+    include_formulas: bool | None = Field(default=None)
+    include_formatting: bool | None = Field(default=None)
+    sheet_names: list[str] | None = Field(
+        default=None,
+        description="Subset of sheet names to parse; *None* parses all sheets.",
+    )
+
+
+class PptxOptions(_BaseOptions):
+    """Run-time options specific to the PPTX parser."""
+
+    extract_images: bool | None = Field(default=None)
+    extract_notes: bool | None = Field(default=None)
+    preserve_formatting: bool | None = Field(default=None)
+    slide_delimiter: str | None = Field(default=None)
+
+
+# ----------------------------------------------------------------------------
+# Public re-exports
+# ----------------------------------------------------------------------------
+
+__all__ = [
+    "DocxOptions",
+    "ExcelOptions",
+    "HtmlOptions",
+    "PageRange",
+    "PdfOptions",
+    "PptxOptions",
+]
+
+
+
+================================================================================
 File: doc_parser/parsers/__init__.py
 ================================================================================
 
@@ -920,145 +1146,6 @@ File: doc_parser/parsers/__init__.py
 from . import docx, excel, html, pdf, pptx
 
 __all__ = ["docx", "excel", "html", "pdf", "pptx"]
-
-
-
-================================================================================
-File: doc_parser/parsers/base_structured.py
-================================================================================
-
-"""Shared helper base class for structured parsers.
-
-This module centralises the boilerplate that previously existed in each
-*structured* parser (DOCX, Excel, etc.).  By providing a template
-implementation of the *validate → open → extract → metadata* flow, new
-parsers can be created by simply plugging in a few hook methods.
-"""
-
-from __future__ import annotations
-
-from abc import ABC, abstractmethod
-from typing import TYPE_CHECKING, Any
-
-from doc_parser.core.base import BaseParser, ParseResult
-
-if TYPE_CHECKING:  # pragma: no cover
-    from pathlib import Path
-
-
-class BaseStructuredParser(BaseParser, ABC):
-    """Shared helper base class for parsers that follow *open → extract → metadata* flow.
-
-    This class collapses the ~100-line boilerplate that existed in each of the
-    DOCX/Excel/PPTX (*structured*) parsers into a single place.  Concrete
-    subclasses only need to provide:
-
-    1. :pyfunc:`_open_document` - Load the raw document object using the
-       third-party library of choice (``python-docx``, ``pandas``, etc.).
-    2. :pyfunc:`_extract_as_markdown` - Convert the document object to a Markdown
-       string.
-    3. :pyfunc:`_extract_as_json` - Serialize the document object into a JSON
-       string.
-    4. (Optional) :pyfunc:`_extra_metadata` - Return additional metadata dict to
-       merge with :pyfunc:`BaseParser.get_metadata` output.
-
-    The class provides the shared *validate → parse → error-handling* skeleton as
-    well as the extension check logic.  Subclasses can still override any
-    method if they have bespoke requirements, but most should not need to.
-    """
-
-    # ------------------------------------------------------------------
-    # Public entry-points
-    # ------------------------------------------------------------------
-    async def validate_input(self, input_path: Path) -> bool:
-        """Validate that *input_path* has a supported extension and exists.
-
-        Subclasses can override for deeper validation (e.g. trying to open the
-        file with the underlying library).  The default implementation checks
-        extension support and file existence.
-        """
-        return input_path.exists() and self._has_supported_extension(input_path)
-
-    # ------------------------------------------------------------------
-    # Shared parsing skeleton
-    # ------------------------------------------------------------------
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
-        """Parse *input_path* using the template method pattern.
-
-        The workflow is:
-
-        1. Validate input.
-        2. Open the document using :pyfunc:`_open_document`.
-        3. Delegate to the format-specific extractor helper.
-        4. Merge basic + extra metadata.
-        5. Wrap any raised exceptions into :class:`ParseResult` errors so that
-           callers do not have to handle them individually.
-        """
-        if not await self.validate_input(input_path):
-            return ParseResult(
-                content="",
-                metadata=self.get_metadata(input_path),
-                errors=[f"Invalid file: {input_path}"],
-            )
-
-        try:
-            document_obj = await self._open_document(input_path, **_kwargs)
-
-            # Choose output format
-            if self.settings.output_format == "markdown":
-                content = await self._extract_as_markdown(document_obj)
-            elif self.settings.output_format == "json":
-                content = await self._extract_as_json(document_obj)
-            else:
-                # Fallback to markdown for unknown/unsupported formats
-                content = await self._extract_as_markdown(document_obj)
-
-            # Metadata aggregation
-            metadata = self.get_metadata(input_path)
-            metadata.update(self._extra_metadata(document_obj))
-
-            return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
-
-        except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
-            # Convert any unexpected exception into a graceful ParseResult
-            return ParseResult(
-                content="",
-                metadata=self.get_metadata(input_path),
-                errors=[f"Failed to parse {input_path.name}: {exc!s}"],
-            )
-
-    # ------------------------------------------------------------------
-    # Abstract hooks - to be implemented by subclasses
-    # ------------------------------------------------------------------
-    @abstractmethod
-    async def _open_document(self, input_path: Path, **kwargs: Any) -> Any:
-        """Open *input_path* and return a library-specific document object."""
-
-    @abstractmethod
-    async def _extract_as_markdown(self, document_obj: Any) -> str:
-        """Convert *document_obj* to Markdown."""
-
-    @abstractmethod
-    async def _extract_as_json(self, document_obj: Any) -> str:
-        """Serialize *document_obj* to a JSON string."""
-
-    # ------------------------------------------------------------------
-    # Optional extension points
-    # ------------------------------------------------------------------
-    def _extra_metadata(self, _document_obj: Any) -> dict[str, Any]:
-        """Return extra metadata dict; subclasses may override.
-
-        The default implementation returns an empty dict.
-        """
-        return {}
-
-
-# ------------------------------------------------------------------
-# Public exports
-# ------------------------------------------------------------------
-__all__ = [
-    "BaseStructuredParser",
-]
 
 
 
@@ -1099,7 +1186,7 @@ Examples:
 from collections.abc import Iterable
 import json
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import docx
 from docx.document import Document
@@ -1108,12 +1195,15 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from doc_parser.config import AppConfig
-from doc_parser.parsers.base_structured import BaseStructuredParser
+from doc_parser.core.base import BaseParser
 from doc_parser.utils.format_helpers import rows_to_markdown
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pydantic import BaseModel
 
 
 @AppConfig.register("docx", [".docx"])
-class DocxParser(BaseStructuredParser):
+class DocxParser(BaseParser):
     """Parser for Microsoft Word documents (.docx).
 
     Provides methods to validate, parse, and extract content in Markdown or JSON formats.
@@ -1175,8 +1265,13 @@ class DocxParser(BaseStructuredParser):
     # BaseStructuredParser hooks
     # ------------------------------------------------------------------
 
-    async def _open_document(self, input_path: Path, **_kwargs: Any) -> Document:
-        """Open *input_path* with **python-docx** and return a Document object."""
+    async def _open_document(self, input_path: Path, *, options: "BaseModel | None" = None) -> Document:
+        """Open *input_path* with **python-docx** and return a Document object.
+
+        The *options* parameter is accepted for API compatibility but is not
+        used by the DOCX parser at this time.
+        """
+        _ = options  # future-proof - avoid unused-arg warnings
         return docx.Document(str(input_path))
 
     def _extra_metadata(self, doc: Any) -> dict[str, Any]:
@@ -1433,7 +1528,7 @@ Examples:
 """
 
 from pathlib import Path
-from typing import Any
+from typing import TYPE_CHECKING, Any
 
 import openpyxl
 from openpyxl.utils import get_column_letter
@@ -1441,12 +1536,15 @@ from openpyxl.utils.exceptions import InvalidFileException
 import pandas as pd
 
 from doc_parser.config import AppConfig
-from doc_parser.parsers.base_structured import BaseStructuredParser
+from doc_parser.core.base import BaseParser
 from doc_parser.utils.format_helpers import dataframe_to_markdown
+
+if TYPE_CHECKING:  # pragma: no cover
+    from pydantic import BaseModel
 
 
 @AppConfig.register("excel", [".xlsx", ".xls", ".xlsm"])
-class ExcelParser(BaseStructuredParser):
+class ExcelParser(BaseParser):
     """Parser for Excel files (.xlsx, .xls, .xlsm).
 
     Args:
@@ -1511,8 +1609,9 @@ class ExcelParser(BaseStructuredParser):
     # BaseStructuredParser hooks
     # ------------------------------------------------------------------
 
-    async def _open_document(self, input_path: Path, **_kwargs: Any) -> Path:
+    async def _open_document(self, input_path: Path, *, options: "BaseModel | None" = None) -> Path:
         """Return *input_path* so downstream helpers can open via pandas as needed."""
+        _ = options
         return input_path
 
     def _extra_metadata(self, input_path: Any) -> dict[str, Any]:
@@ -1742,6 +1841,8 @@ from doc_parser.core.base import BaseParser, ParseResult
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import BaseModel
+
 MIN_RELATED_LEN = 10
 
 
@@ -1790,7 +1891,9 @@ class HtmlParser(BaseParser):
     # ------------------------------------------------------------------
     # Public high-level entry-point override to support URL strings
     # ------------------------------------------------------------------
-    async def parse(self, input_path: Path | str, **_kwargs: Any) -> ParseResult:
+    async def parse(
+        self, input_path: Path | str, *, output_format: str | None = None, options: BaseModel | None = None
+    ) -> ParseResult:
         """Parse input_path as local file or remote URL.
 
         Overrides BaseParser.parse to route HTTP/HTTPS inputs to parse_url
@@ -1798,7 +1901,8 @@ class HtmlParser(BaseParser):
 
         Args:
             input_path (Path | str): File path or URL string.
-            **_kwargs: Parser-specific options.
+            output_format (str | None): Output format for the parsed content.
+            options (BaseModel | None): Optional parser-specific options.
 
         Returns:
             ParseResult: Parsed content, metadata, format, and errors.
@@ -1812,7 +1916,7 @@ class HtmlParser(BaseParser):
         """
         # Handle URL strings directly
         if isinstance(input_path, str) and input_path.startswith(("http://", "https://")):
-            return await self.parse_url(input_path, **_kwargs)
+            return await self.parse_url(input_path, output_format=output_format, options=options)
 
         # Otherwise use the base implementation (expects Path)
         from pathlib import Path as _Path
@@ -1820,7 +1924,7 @@ class HtmlParser(BaseParser):
         if isinstance(input_path, str):
             input_path = _Path(input_path)
 
-        return await super().parse(input_path, **_kwargs)
+        return await super().parse(input_path, output_format=output_format, options=options)
 
     # ---------------------------------------------------------------------
     # Validation helpers
@@ -1860,12 +1964,12 @@ class HtmlParser(BaseParser):
     # ------------------------------------------------------------------
     # Public entry-points
     # ------------------------------------------------------------------
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse a local URL file and delegate to parse_url.
 
         Args:
             input_path (Path): Path to .url or .webloc file.
-            **_kwargs: Parser-specific options.
+            options (BaseModel | None): Optional parser-specific options.
 
         Returns:
             ParseResult: Result of parse_url or error if validation fails.
@@ -1883,14 +1987,17 @@ class HtmlParser(BaseParser):
                 errors=["Invalid URL file"],
             )
         url = await self._extract_url(input_path)
-        return await self.parse_url(url, **_kwargs)
+        return await self.parse_url(url, output_format=None, options=options)
 
-    async def parse_url(self, url: str, **_kwargs: Any) -> ParseResult:
+    async def parse_url(
+        self, url: str, *, output_format: str | None = None, options: BaseModel | None = None
+    ) -> ParseResult:
         """Fetch and parse a remote URL, returning structured ParseResult.
 
         Args:
             url (str): HTTP/HTTPS URL to fetch.
-            **_kwargs: Parser-specific options.
+            output_format (str | None): Output format for the parsed content.
+            options (BaseModel | None): Optional parser-specific options.
 
         Returns:
             ParseResult: Parsed content in Markdown or JSON, metadata, and errors.
@@ -1903,7 +2010,8 @@ class HtmlParser(BaseParser):
         """
         try:
             content_data = await self._fetch_and_parse(url)
-            if self.settings.output_format == "json":
+            effective_format = output_format or self.settings.output_format
+            if effective_format == "json":
                 import json as _json
 
                 content_str = _json.dumps(content_data, indent=2, ensure_ascii=False)
@@ -1917,10 +2025,11 @@ class HtmlParser(BaseParser):
                 "domain": urlparse(url).netloc,
                 "content_type": content_data.get("content_type", ""),
             }
+            _ = options
             return ParseResult(
                 content=content_str,
                 metadata=metadata,
-                output_format=self.settings.output_format,
+                output_format=effective_format,
             )
         except (TimeoutError, aiohttp.ClientError, ValueError) as exc:  # pragma: no cover
             return ParseResult(content="", metadata={"url": url}, errors=[str(exc)])
@@ -2453,13 +2562,14 @@ Example:
 from __future__ import annotations
 
 import asyncio
-from typing import TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, cast
 
 from pdf2image import convert_from_path
 from tqdm.asyncio import tqdm
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.options import PdfOptions
 from doc_parser.utils.async_batcher import RateLimiter
 from doc_parser.utils.cache import cache_get, cache_set
 
@@ -2469,8 +2579,9 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from PIL import Image
+    from pydantic import BaseModel
 
-    from doc_parser.prompts import PromptTemplate
+    from doc_parser.prompts import PromptTemplate, PromptTemplate as _PromptTemplate
 
 
 @AppConfig.register("pdf", [".pdf"])
@@ -2543,7 +2654,7 @@ class PDFParser(BaseParser):
             return False
         return size != 0
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D417
         """Parse a PDF document and return extraction results.
 
         Orchestrates validation, image conversion, text extraction,
@@ -2573,15 +2684,24 @@ class PDFParser(BaseParser):
                 errors=[f"Invalid PDF file: {input_path}"],
             )
 
-        # Get options
-        page_range = _kwargs.get("page_range")
-        prompt_template = _kwargs.get("prompt_template")
+        # Extract typed options
+        pdf_opts: PdfOptions
+        if options is None:
+            pdf_opts = PdfOptions()
+        elif isinstance(options, PdfOptions):
+            pdf_opts = options
+        else:
+            # Downcast - allow callers to supply generic BaseModel but ensures type safety internally.
+            pdf_opts = PdfOptions.model_validate(options.model_dump())
+
+        page_range = pdf_opts.page_range
+        prompt_template = pdf_opts.prompt_template
 
         # Convert PDF to images
         images = await self._pdf_to_images(input_path, page_range)
 
         # Process pages
-        results = await self._process_pages(images, input_path, prompt_template)
+        results = await self._process_pages(images, input_path, cast("_PromptTemplate | None", prompt_template))
 
         # Combine results
         content = self._combine_results(results)
@@ -2898,6 +3018,8 @@ from doc_parser.utils.format_helpers import rows_to_markdown
 if TYPE_CHECKING:
     from pathlib import Path
 
+    from pydantic import BaseModel
+
 
 @AppConfig.register("pptx", [".pptx"])
 class PptxParser(BaseParser):
@@ -2962,14 +3084,14 @@ class PptxParser(BaseParser):
     # ------------------------------------------------------------------
     # Public entry-points
     # ------------------------------------------------------------------
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:
         """Parse a PPTX file and return a ParseResult.
 
         Iterates through slides, extracting content and caching results.
 
         Args:
             input_path (Path): Path to the PPTX file.
-            **kwargs: Additional parser options (unused).
+            options: Parser options object (currently unused for PPTX).
 
         Returns:
             ParseResult: Contains combined content, metadata, and format.
@@ -2981,6 +3103,7 @@ class PptxParser(BaseParser):
                 errors=[f"Invalid PPTX file: {input_path}"],
             )
 
+        _ = options  # unused currently
         prs = Presentation(str(input_path))
 
         slide_markdowns: list[str] = []
@@ -4787,6 +4910,7 @@ from typer.testing import CliRunner
 from doc_parser import cli as dp_cli
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from pydantic import BaseModel
 
 # Ensure Path is available in annotations for Typer introspection
 dp_cli.Path = Path  # type: ignore[attr-defined]
@@ -4799,7 +4923,8 @@ class TxtCliParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs):  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None):  # noqa: D401
+        _ = options
         return ParseResult(content=input_path.read_text(), metadata={})
 
 
@@ -4820,6 +4945,7 @@ File: tests/core/test_base_parser_additional.py
 import asyncio
 from pathlib import Path
 from typing import Any
+from pydantic import BaseModel
 
 import pytest
 
@@ -4837,7 +4963,8 @@ class CountingParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D401
+        _ = options
         self.call_count += 1
         return ParseResult(content="dummy", metadata=self.get_metadata(input_path), output_format=self.settings.output_format)
 
@@ -4929,6 +5056,7 @@ File: tests/core/test_base_parser_helpers.py
 
 from pathlib import Path
 from typing import Any
+from pydantic import BaseModel
 
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.config import AppConfig
@@ -4938,7 +5066,8 @@ class DummyParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D401
+        _ = options
         return ParseResult(content="dummy", metadata=self.get_metadata(input_path))
 
 
@@ -4979,6 +5108,7 @@ File: tests/core/test_registry_and_settings.py
 
 from pathlib import Path
 from typing import Any
+from pydantic import BaseModel
 
 import pytest
 
@@ -4996,7 +5126,8 @@ class TxtParser(BaseParser):
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         return input_path.suffix.lower() == ".txt"
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, *, options: BaseModel | None = None) -> ParseResult:  # noqa: D401
+        _ = options
         return ParseResult(content=input_path.read_text(), metadata=self.get_metadata(input_path))
 
 
@@ -5652,6 +5783,7 @@ from PIL import Image
 
 from doc_parser.config import AppConfig
 from doc_parser.parsers.pdf.parser import PDFParser
+from doc_parser.options import PdfOptions
 
 
 @pytest.mark.asyncio
@@ -5730,7 +5862,8 @@ async def test_pdf_parser_page_range(tmp_path, monkeypatch):
     )
 
     parser = PDFParser(AppConfig(use_cache=False))
-    _ = await parser.parse(pdf_path, page_range=(1, 1))
+    opts = PdfOptions(page_range=(1, 1))
+    _ = await parser.parse(pdf_path, options=opts)
 
     # convert_from_path should have received first_page / last_page args
     assert captured_kwargs.get("first_page") == 1
