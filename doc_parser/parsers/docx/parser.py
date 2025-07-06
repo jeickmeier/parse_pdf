@@ -28,12 +28,12 @@ from docx.table import Table
 from docx.text.paragraph import Paragraph
 
 from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
-from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.parsers.base_structured import BaseStructuredParser
 from doc_parser.utils.format_helpers import rows_to_markdown
 
 
 @ParserRegistry.register("docx", [".docx"])
-class DocxParser(BaseParser):
+class DocxParser(BaseStructuredParser):
     """Parser for Microsoft Word documents (.docx).
 
     Provides methods to validate, parse, and extract content in Markdown or JSON formats.
@@ -91,66 +91,36 @@ class DocxParser(BaseParser):
             return False
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
-        """Parse a DOCX document and return the results as a ParseResult.
+    # ------------------------------------------------------------------
+    # BaseStructuredParser hooks
+    # ------------------------------------------------------------------
 
-        Processes the document using python-docx, choosing format based on settings.output_format.
+    async def _open_document(self, input_path: Path, **_kwargs: Any) -> Document:
+        """Open *input_path* with **python-docx** and return a Document object."""
+        return docx.Document(str(input_path))
 
-        Args:
-            input_path (Path): Path to the DOCX file.
-            **_kwargs: Additional parser options (currently unused).
+    def _extra_metadata(self, doc: Any) -> dict[str, Any]:
+        """Return DOCX-specific metadata counts and core properties."""
+        # Cast to python-docx Document for type-check; if wrong type we fall back gracefully
+        from docx.document import Document
 
-        Returns:
-            ParseResult: Contains content, metadata, format, and errors.
+        if isinstance(doc, Document):
+            document = doc
+        else:
+            return {}
 
-        Example:
-            >>> import asyncio
-            >>> from pathlib import Path
-            >>> parser = DocxParser(Settings())
-            >>> result = asyncio.run(parser.parse(Path("example.docx")))
-            >>> print(result.format)
-            'markdown'
-        """
-        if not await self.validate_input(input_path):
-            return ParseResult(
-                content="",
-                metadata=self.get_metadata(input_path),
-                errors=[f"Invalid DOCX file: {input_path}"],
-            )
+        meta: dict[str, Any] = {
+            "paragraphs": len(document.paragraphs),
+            "tables": len(document.tables),
+            "sections": len(document.sections),
+        }
 
-        try:
-            doc = docx.Document(str(input_path))
-
-            # Extract content based on format
-            if self.settings.output_format == "markdown":
-                content = await self._extract_as_markdown(doc)
-            elif self.settings.output_format == "json":
-                content = await self._extract_as_json(doc)
-            else:
-                content = await self._extract_as_markdown(doc)
-
-            # Build metadata
-            metadata = self.get_metadata(input_path)
-            metadata.update({
-                "paragraphs": len(doc.paragraphs),
-                "tables": len(doc.tables),
-                "sections": len(doc.sections),
-            })
-
-            # Add document properties if available
-            if hasattr(doc.core_properties, "title") and doc.core_properties.title:
-                metadata["title"] = doc.core_properties.title
-            if hasattr(doc.core_properties, "author") and doc.core_properties.author:
-                metadata["author"] = doc.core_properties.author
-
-            return ParseResult(content=content, metadata=metadata, format=self.settings.output_format)
-
-        except (ValueError, OSError, PackageNotFoundError, KeyError) as exc:
-            return ParseResult(
-                content="",
-                metadata=self.get_metadata(input_path),
-                errors=[f"Failed to parse DOCX file: {exc!s}"],
-            )
+        # Optional core properties
+        if getattr(document.core_properties, "title", None):
+            meta["title"] = document.core_properties.title
+        if getattr(document.core_properties, "author", None):
+            meta["author"] = document.core_properties.author
+        return meta
 
     async def _extract_as_markdown(self, doc: Document) -> str:
         """Convert a python-docx Document to a Markdown string.

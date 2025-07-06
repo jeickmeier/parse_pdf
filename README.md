@@ -92,7 +92,44 @@ PromptRegistry.register("custom", template)
 
 ### Extending with Custom Parsers
 
-Create and register new parsers for additional file types:
+#### Lightweight structured parsers via `BaseStructuredParser`
+
+If your format follows the common *open → extract → metadata* pattern (like
+DOCX, Excel, etc.) you can subclass
+`doc_parser.parsers.base_structured.BaseStructuredParser` and implement just a
+few hook methods — no need to duplicate the validation/metadata boilerplate.
+
+```python
+from pathlib import Path
+import pandas as pd
+
+from doc_parser.config import AppConfig as ParserRegistry
+from doc_parser.parsers.base_structured import BaseStructuredParser
+
+
+@ParserRegistry.register("csv", [".csv"])
+class CsvParser(BaseStructuredParser):
+    async def _open_document(self, input_path: Path, **_kw: object) -> pd.DataFrame:  # noqa: D401
+        return pd.read_csv(input_path)
+
+    async def _extract_as_markdown(self, df: pd.DataFrame) -> str:  # noqa: D401
+        from doc_parser.utils.format_helpers import dataframe_to_markdown
+
+        return dataframe_to_markdown(df)
+
+    async def _extract_as_json(self, df: pd.DataFrame) -> str:  # noqa: D401
+        import json
+
+        return json.dumps(df.to_dict(orient="records"), indent=2)
+
+    def _extra_metadata(self, df: pd.DataFrame) -> dict[str, object]:  # noqa: D401
+        return {"rows": len(df), "columns": len(df.columns)}
+```
+
+#### Full-control parsers
+
+For formats that require bespoke workflows (streamed HTML, vision-based PDF,
+etc.), inherit directly from `BaseParser` instead:
 
 ```python
 from pathlib import Path

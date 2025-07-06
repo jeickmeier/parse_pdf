@@ -24,12 +24,12 @@ from openpyxl.utils.exceptions import InvalidFileException
 import pandas as pd
 
 from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
-from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.parsers.base_structured import BaseStructuredParser
 from doc_parser.utils.format_helpers import dataframe_to_markdown
 
 
 @ParserRegistry.register("excel", [".xlsx", ".xls", ".xlsm"])
-class ExcelParser(BaseParser):
+class ExcelParser(BaseStructuredParser):
     """Parser for Excel files (.xlsx, .xls, .xlsm).
 
     Args:
@@ -90,68 +90,33 @@ class ExcelParser(BaseParser):
             return False
         return True
 
-    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
-        """Parse an Excel document and return the extraction results.
+    # ------------------------------------------------------------------
+    # BaseStructuredParser hooks
+    # ------------------------------------------------------------------
 
-        This method handles validation, format selection (markdown/json), metadata,
-        and error reporting.
+    async def _open_document(self, input_path: Path, **_kwargs: Any) -> Path:
+        """Return *input_path* so downstream helpers can open via pandas as needed."""
+        return input_path
 
-        Args:
-            input_path (Path): Path to the Excel file.
-            **_kwargs: Additional options (currently unused).
-
-        Returns:
-            ParseResult: Contains extracted content, metadata (sheets, counts), format, and errors.
-
-        Example:
-            >>> import asyncio
-            >>> from pathlib import Path
-            >>> parser = ExcelParser(Settings())
-            >>> result = asyncio.run(parser.parse(Path("file.xlsx")))
-            >>> print(result.metadata["sheet_count"])
-        """
-        if not await self.validate_input(input_path):
-            return ParseResult(
-                content="",
-                metadata=self.get_metadata(input_path),
-                errors=[f"Invalid Excel file: {input_path}"],
-            )
-
+    def _extra_metadata(self, input_path: Any) -> dict[str, Any]:
+        """Return sheet names and count for quick metadata lookup."""
         try:
-            # Extract content based on format
-            if self.settings.output_format == "markdown":
-                content = await self._extract_as_markdown(input_path, **_kwargs)
-            elif self.settings.output_format == "json":
-                content = await self._extract_as_json(input_path, **_kwargs)
-            else:
-                content = await self._extract_as_markdown(input_path, **_kwargs)
-
-            # Build metadata
-            metadata = self.get_metadata(input_path)
             excel_file = pd.ExcelFile(input_path)
-            metadata.update({
+            return {
                 "sheets": excel_file.sheet_names,
                 "sheet_count": len(excel_file.sheet_names),
-            })
+            }
+        except Exception:  # pylint: disable=broad-except  # noqa: BLE001
+            return {}
 
-            return ParseResult(content=content, metadata=metadata, format=self.settings.output_format)
-
-        except (ValueError, OSError, InvalidFileException, KeyError) as exc:
-            return ParseResult(
-                content="",
-                metadata=self.get_metadata(input_path),
-                errors=[f"Failed to parse Excel file: {exc!s}"],
-            )
-
-    async def _extract_as_markdown(self, input_path: Path, **_kwargs: Any) -> str:
+    async def _extract_as_markdown(self, document_obj: Path) -> str:
         """Extract Excel content as a Markdown string.
 
         Iterates over sheets, converts DataFrames to markdown tables, includes empty sheet markers,
         and appends formulas if configured.
 
         Args:
-            input_path (Path): Path to the Excel file.
-            **_kwargs: Additional options (sheet filters).
+            document_obj (Path): Path to the Excel file.
 
         Returns:
             str: Combined Markdown content for all processed sheets.
@@ -163,19 +128,21 @@ class ExcelParser(BaseParser):
             >>> md = asyncio.run(parser._extract_as_markdown(Path("file.xlsx")))
             >>> assert "# Sheet:" in md
         """
-        excel_file = pd.ExcelFile(input_path)
+        excel_file = pd.ExcelFile(document_obj)
         content_parts = []
 
         # Determine which sheets to process
-        sheets_to_process: list[str] = self.sheet_names or excel_file.sheet_names  # type: ignore[assignment]
-        sheets_to_process = [s for s in sheets_to_process if s in excel_file.sheet_names]
+        if self.sheet_names is not None:
+            sheets_to_process: list[str] = [s for s in self.sheet_names if s in excel_file.sheet_names]
+        else:
+            sheets_to_process = [str(name) for name in excel_file.sheet_names]
 
         for sheet_name in sheets_to_process:
             # Add sheet header
             content_parts.append(f"# Sheet: {sheet_name}\n")
 
             # Read sheet data
-            df = pd.read_excel(input_path, sheet_name=sheet_name, header=None)
+            df = pd.read_excel(document_obj, sheet_name=sheet_name, header=None)
 
             # Convert to markdown table
             if not df.empty:
@@ -186,7 +153,7 @@ class ExcelParser(BaseParser):
 
             # Add formulas if requested
             if self.include_formulas:
-                formulas = await self._extract_formulas(input_path, sheet_name)
+                formulas = await self._extract_formulas(document_obj, sheet_name)
                 if formulas:
                     content_parts.append("\n## Formulas\n")
                     for cell, formula in formulas.items():
@@ -196,15 +163,14 @@ class ExcelParser(BaseParser):
 
         return "\n".join(content_parts)
 
-    async def _extract_as_json(self, input_path: Path, **_kwargs: Any) -> str:
+    async def _extract_as_json(self, document_obj: Path) -> str:
         """Extract Excel content as a JSON string.
 
         Serializes each sheet into an object containing data records, column names, shape,
         and optional formulas.
 
         Args:
-            input_path (Path): Path to the Excel file.
-            **_kwargs: Additional options (sheet filters).
+            document_obj (Path): Path to the Excel file.
 
         Returns:
             str: JSON-formatted string of sheet data.
@@ -219,15 +185,17 @@ class ExcelParser(BaseParser):
         """
         import json
 
-        excel_file = pd.ExcelFile(input_path)
+        excel_file = pd.ExcelFile(document_obj)
         data = {}
 
         # Determine which sheets to process
-        sheets_to_process: list[str] = self.sheet_names or excel_file.sheet_names  # type: ignore[assignment]
-        sheets_to_process = [s for s in sheets_to_process if s in excel_file.sheet_names]
+        if self.sheet_names is not None:
+            sheets_to_process: list[str] = [s for s in self.sheet_names if s in excel_file.sheet_names]
+        else:
+            sheets_to_process = [str(name) for name in excel_file.sheet_names]
 
         for sheet_name in sheets_to_process:
-            df = pd.read_excel(input_path, sheet_name=sheet_name)
+            df = pd.read_excel(document_obj, sheet_name=sheet_name)
 
             # Convert to dict
             sheet_data = {
@@ -238,7 +206,7 @@ class ExcelParser(BaseParser):
 
             # Add formulas if requested
             if self.include_formulas:
-                sheet_data["formulas"] = await self._extract_formulas(input_path, sheet_name)
+                sheet_data["formulas"] = await self._extract_formulas(document_obj, sheet_name)
 
             data[sheet_name] = sheet_data
 

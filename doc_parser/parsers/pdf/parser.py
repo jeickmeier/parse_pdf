@@ -33,7 +33,7 @@ from tqdm.asyncio import tqdm
 
 from doc_parser.config import AppConfig as ParserRegistry, AppConfig as Settings
 from doc_parser.core.base import BaseParser, ParseResult
-from doc_parser.utils.async_helpers import RateLimiter
+from doc_parser.utils.async_batcher import RateLimiter
 from doc_parser.utils.cache import cache_get, cache_set
 
 from .extractors import VisionExtractor

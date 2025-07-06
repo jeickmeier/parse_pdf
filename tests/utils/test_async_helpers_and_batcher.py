@@ -3,8 +3,7 @@ from collections import Counter
 
 import pytest
 
-from doc_parser.utils.async_helpers import RateLimiter, run_with_retry
-from doc_parser.utils.async_batcher import AsyncBatcher
+from doc_parser.utils.async_batcher import AsyncBatcher, RateLimiter
 
 
 @pytest.mark.asyncio
@@ -18,7 +17,7 @@ async def test_run_with_retry_success_after_failures():
             raise RuntimeError("boom")
         return x
 
-    result = await run_with_retry(flaky, 5, max_retries=3, backoff_factor=0.01)
+    result = await AsyncBatcher.run_with_retry(flaky, 5, max_retries=3, backoff_factor=0.01)
     assert result == 5
     # Should have attempted exactly 3 times (2 failures + 1 success)
     assert attempts["count"] == 3

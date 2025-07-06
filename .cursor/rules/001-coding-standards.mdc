@@ -1,0 +1,46 @@
+description: Enforce Python coding standards (ruff lint/format, mypy --strict, Google-style docstrings)
+globs: "**/*.py"
+---
+# Python Coding Standards for `doc_parser`
+
+These guidelines instruct Cursor's AI agents to generate **only** code that passes the repository's
+configured tooling _without further manual fixes_.  Whenever you create or modify Python files,
+apply all rules below.
+
+## 1. Ruff linting & formatting
+1. Honour the project's `pyproject.toml` Ruff configuration:
+   * `line-length = 120`, `target-version = "py312"`.
+   * Enabled rule sets: `E,F,W,ANN,D,UP,S,SIM,T20,TID,TRY,ERA,PL,PT,Q,RUF,PERF,PIE,YTT,EXE,B,N,I,C4,ARG,TCH,BLE,C90,PTH,LOG,G`.
+   * Ignored rules (keep the list as-is – do **not** re-enable).
+2. Always run **ruff format** semantics:
+   * Double quotes, 4-space indent, LF line endings.
+   * No magic trailing comma skipping.
+3. Produce code that is _lint-clean_: `ruff check . --fix` must return **zero warnings**.
+
+## 2. Type-checking (mypy)
+1. All public functions, methods, and variables **must** have explicit type hints – avoid `Any`.
+2. The project runs `mypy . --strict`; the generated code **must compile without errors**.
+3. Do **not** silence diagnostics with `# type: ignore` unless interacting with 3rd-party stubs already ignored via the existing per-package overrides.
+
+## 3. Docstrings & comments
+1. Write **Google-style** docstrings for every public class, function, and significant private helper.
+2. Include:
+   * Short summary line.
+   * Args / Returns / Raises sections (where applicable).
+   * Examples demonstrating usage for non-trivial APIs.
+3. Keep docstrings under 120 characters per line and formatted by Ruff.
+
+## 4. General code style
+1. Prefer **pathlib** APIs (`Path`) over `os.path` (Ruff `PTH` rule).
+2. Use f-strings (`UP` rule) and avoid string concatenation.
+3. Keep functions small (< 15 McCabe complexity) – refactor if `PLR0912/13` triggers.
+4. Use early returns to reduce nesting; minimise branching.
+5. Avoid wildcard imports; use absolute imports (`I` rules).
+6. Log with the standard `logging` module – no bare `print` statements (`T20`).
+
+## 5. Testing considerations
+1. Public APIs **must** be covered by or extended with `pytest` tests under `tests/`.
+2. Add fixtures or mocks instead of touching external services directly.
+
+---
+Follow these rules _first-time_—generated code should already comply, not rely on later clean-ups.
