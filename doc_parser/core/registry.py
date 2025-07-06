@@ -85,11 +85,16 @@ class ParserRegistry:
             cls._parsers[name] = parser_class
 
             # Register extensions
+            normalized_exts: list[str] = []
             for raw_ext in extensions:
                 ext = raw_ext.lower()
                 if not ext.startswith("."):
                     ext = f".{ext}"
                 cls._extensions[ext] = name
+                normalized_exts.append(ext)
+
+            # Use setattr to avoid mypy attr-defined complaints on dynamic attributes
+            parser_class.SUPPORTED_EXTENSIONS = normalized_exts  # type: ignore[attr-defined]
 
             return parser_class
 

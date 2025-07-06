@@ -2,8 +2,7 @@ import pandas as pd
 from pathlib import Path
 
 from doc_parser.utils.format_helpers import rows_to_markdown, dataframe_to_markdown
-from doc_parser.utils.file_helpers import save_markdown
-from doc_parser.utils.file_validators import is_supported_file
+from doc_parser.core.base import ParseResult
 
 
 def test_rows_to_markdown_basic():
@@ -41,20 +40,9 @@ def test_dataframe_to_markdown_empty():
 def test_save_markdown(tmp_path):
     content = "# Title\n\nSample paragraph"
     dest = tmp_path / "sample.md"
-    save_markdown(content, dest)
+    pr = ParseResult(content=content, format="markdown")
+    pr.save_markdown(dest)
     assert dest.read_text(encoding="utf-8") == content
 
 
-def test_is_supported_file(tmp_path):
-    pdf_path = tmp_path / "doc.pdf"
-    pdf_path.write_text("dummy")
-
-    txt_path = tmp_path / "doc.txt"
-    txt_path.write_text("dummy")
-
-    # Should recognise regardless of leading dot in extension list
-    assert is_supported_file(pdf_path, ["pdf"]) is True
-    assert is_supported_file(pdf_path, [".pdf"]) is True
-
-    # Unsupported extension should return False
-    assert is_supported_file(txt_path, ["pdf", "docx"]) is False 
+# Removed is_supported_file tests since functionality is now handled in parser classes. 

@@ -30,7 +30,6 @@ from docx.text.paragraph import Paragraph
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.core.registry import ParserRegistry
 from doc_parser.core.settings import Settings
-from doc_parser.utils.file_validators import is_supported_file
 from doc_parser.utils.format_helpers import rows_to_markdown
 
 
@@ -84,7 +83,7 @@ class DocxParser(BaseParser):
             >>> valid = asyncio.run(DocxParser(Settings()).validate_input(Path("doc.docx")))
             >>> print(valid)
         """
-        if not is_supported_file(input_path, [".docx"]):
+        if not self._has_supported_extension(input_path):
             return False
         try:
             # Try to open with python-docx to validate
@@ -345,3 +344,6 @@ class DocxParser(BaseParser):
                     content.append(f"**Footer:** {footer_text}")
 
         return "\n".join(content)
+
+    def _has_supported_extension(self, input_path: Path) -> bool:
+        return super()._has_supported_extension(input_path)

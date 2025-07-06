@@ -35,7 +35,6 @@ from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.core.registry import ParserRegistry
 from doc_parser.utils.async_helpers import RateLimiter
 from doc_parser.utils.cache import cache_get, cache_set
-from doc_parser.utils.file_validators import is_supported_file
 
 from .extractors import VisionExtractor
 
@@ -109,7 +108,7 @@ class PDFParser(BaseParser):
             >>> result = asyncio.run(PDFParser(Settings()).validate_input(Path("file.pdf")))
             >>> print(result)
         """
-        if not is_supported_file(input_path, [".pdf"]):
+        if not self._has_supported_extension(input_path):
             return False
         # Check if file is readable and not empty
         try:
@@ -405,3 +404,14 @@ class PDFParser(BaseParser):
             cleaned_lines.append(line)
 
         return "\n".join(cleaned_lines)
+
+    def _has_supported_extension(self, input_path: Path) -> bool:
+        """Check if the input path has a supported file extension.
+
+        Args:
+            input_path (Path): Path to the file.
+
+        Returns:
+            bool: True if the file has a supported extension, False otherwise.
+        """
+        return super()._has_supported_extension(input_path)

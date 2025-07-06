@@ -26,7 +26,6 @@ import pandas as pd
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.core.registry import ParserRegistry
 from doc_parser.core.settings import Settings
-from doc_parser.utils.file_validators import is_supported_file
 from doc_parser.utils.format_helpers import dataframe_to_markdown
 
 
@@ -83,7 +82,7 @@ class ExcelParser(BaseParser):
             >>> valid = asyncio.run(parser.validate_input(Path("file.xlsx")))
             >>> print(valid)
         """
-        if not is_supported_file(input_path, [".xlsx", ".xls", ".xlsm"]):
+        if not self._has_supported_extension(input_path):
             return False
         try:
             # Try to open with pandas to validate

@@ -13,7 +13,6 @@ from pathlib import Path
 from doc_parser import parsers  # noqa: F401
 from doc_parser.core.registry import ParserRegistry
 from doc_parser.core.settings import Settings
-from doc_parser.utils import save_markdown
 
 
 async def example_basic_usage():
@@ -36,9 +35,9 @@ async def example_basic_usage():
             result = await parser.parse(pdf_path)
 
 
-            # Save to markdown file using helper
+            # Save to markdown file via ParseResult convenience method
             output_path = Path("outputs") / f"{pdf_path.stem}_parsed.md"
-            save_markdown(result.content, output_path)
+            result.save_markdown(output_path)
 
         except Exception:
             pass
@@ -64,7 +63,7 @@ async def example_html_usage():
         # Construct a safe filename from the URL to avoid invalid path characters
         safe_url = url.replace("/", "_").replace(":", "_")
         output_path = Path("outputs") / f"{safe_url}_parsed.md"
-        save_markdown(result.content, output_path)
+        result.save_markdown(output_path)
 
     except Exception:
         pass

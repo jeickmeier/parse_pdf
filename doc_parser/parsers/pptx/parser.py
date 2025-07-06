@@ -28,7 +28,6 @@ from pptx.exc import PackageNotFoundError  # type: ignore[import-not-found]
 from doc_parser.core.base import BaseParser, ParseResult
 from doc_parser.core.registry import ParserRegistry
 from doc_parser.utils.cache import cache_get, cache_set
-from doc_parser.utils.file_validators import is_supported_file
 from doc_parser.utils.format_helpers import rows_to_markdown
 
 if TYPE_CHECKING:
@@ -93,7 +92,7 @@ class PptxParser(BaseParser):
         Returns:
             bool: True if the file exists, has a .pptx extension, and can be opened.
         """
-        if not is_supported_file(input_path, [".pptx"]):
+        if not self._has_supported_extension(input_path):
             return False
         try:
             Presentation(str(input_path))

@@ -241,6 +241,36 @@ class BaseParser(ABC):
         """Blocking wrapper around :pyfunc:`parse` for scripting convenience."""
         return asyncio.run(self.parse(input_path, **kwargs))
 
+    # ------------------------------------------------------------------
+    # Class-level helpers
+    # ------------------------------------------------------------------
+
+    @classmethod
+    def supported_extensions(cls) -> list[str]:
+        """Return list of supported extensions normalised by the registry.
+
+        The attribute ``SUPPORTED_EXTENSIONS`` is attached automatically by
+        :pyfunc:`ParserRegistry.register`.  Subclasses can choose to override or
+        extend this method if they need custom logic.
+        """
+        return getattr(cls, "SUPPORTED_EXTENSIONS", [])
+
+    # ------------------------------------------------------------------
+    # Path helpers (formerly utils.file_validators)
+    # ------------------------------------------------------------------
+    def _has_supported_extension(self, input_path: Path) -> bool:
+        """Return ``True`` if *input_path* matches this parser's extensions.
+
+        Args:
+            input_path: Path to validate.
+
+        Returns:
+            bool: ``True`` when the suffix of *input_path* (case-insensitive) is
+                one of :pyattr:`SUPPORTED_EXTENSIONS`.
+        """
+        ext = input_path.suffix.lower()
+        return ext in self.supported_extensions()
+
 
 class BaseExtractor(ABC):
     """Base class for content extractors."""
