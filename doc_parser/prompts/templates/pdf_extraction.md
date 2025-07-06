@@ -25,7 +25,7 @@ Your task is to convert the provided image into **valid Markdown** format.
 
 ### Formulas and Equations
 - Write mathematical formulas in LaTeX format enclosed in $ for inline or $$ for block equations.
-- Example: $E = mc^2$ or $$\int_{a}^{b} f(x) dx$$
+- Example: $E = mc^2$ or $$\int_{{a}}^{{b}} f(x) dx$$
 
 ### Figures and Images
 - Describe figures/charts in square brackets as placeholders: [Figure: Description].

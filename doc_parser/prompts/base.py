@@ -66,9 +66,19 @@ class PromptTemplate:
             Rendered prompt string
         """
         context = {**self.variables, **kwargs}
-        # Convert any Jinja2-style placeholders {{var}} to Python format {var}
+
+        # Convert any Jinja2-style placeholders ``{{var}}`` to Python ``{var}``
         fmt_str = re.sub(r"{{\s*(\w+)\s*}}", r"{\1}", self._template_str)
-        return fmt_str.format(**context)
+
+        class _SafeDict(dict[str, str]):
+            """dict subclass that returns an empty string for missing keys."""
+
+            def __missing__(self, key: str) -> str:
+                """Return empty string for missing *key* to avoid KeyError."""
+                return ""
+
+        # Use ``format_map`` so that missing keys default to "" instead of raising
+        return fmt_str.format_map(_SafeDict(context))
 
     @classmethod
     def from_file(cls, template_path: Path, variables: dict[str, Any] | None = None) -> "PromptTemplate":
