@@ -1,14 +1,13 @@
 """Example: post-parse prompting programmatic usage."""
 
 import asyncio
-from pathlib import Path
 import logging
+from pathlib import Path
 
-from doc_parser.core.settings import Settings
+from pydantic import BaseModel, ConfigDict, Field, field_validator
+
 from doc_parser.core.registry import ParserRegistry
-
-from pydantic import BaseModel, Field, field_validator, ConfigDict
-from typing import Optional
+from doc_parser.core.settings import Settings
 
 # mypy: ignore-errors
 
@@ -77,10 +76,10 @@ class DocumentSummary(BaseModel):
         alias="Title",
         description="What is the title of the document?",
     )
-    date: Optional[str] = Field(
+    date: str | None = Field(
         default=None, alias="Date", description="What is the date of the document?"
     )
-    publisher: Optional[str] = Field(
+    publisher: str | None = Field(
         default=None,
         alias="Publisher",
         description="Who is the publisher of the document?",
@@ -132,19 +131,19 @@ class DocumentSummary(BaseModel):
     )
 
     @field_validator("authors", mode="before")
-    def ensure_authors_list(cls, v):
+    def ensure_authors_list(self, v):
         if isinstance(v, str):
             return [v]
         return v
 
     @field_validator("date", mode="before")
-    def ensure_date(cls, v):
+    def ensure_date(self, v):
         if v is None:
             return ""
         return v
 
     @field_validator("publisher", mode="before")
-    def ensure_publisher(cls, v):
+    def ensure_publisher(self, v):
         if v is None:
             return ""
         return v
@@ -167,17 +166,10 @@ async def main():
         from pydantic import BaseModel  # Local import to avoid unused-import warnings
 
         if isinstance(result.post_content, BaseModel):
-            print(
-                "\nPost-processed output:\n",
-                result.post_content.model_dump_json(indent=2),
-            )
+            pass
         else:
-            import json
+            pass
 
-            print(
-                "\nPost-processed output:\n",
-                json.dumps(result.post_content, indent=2, default=str),
-            )
 
 
 if __name__ == "__main__":

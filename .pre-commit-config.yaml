@@ -1,0 +1,31 @@
+# .pre-commit-config.yaml
+repos:
+
+  # 2. Ruff – linter / fixer (runs *after* Black)
+  - repo: https://github.com/astral-sh/ruff-pre-commit
+    rev: v0.12.0
+    hooks:
+      - id: ruff
+        name: linter + formatter
+        args: ["--fix"]
+
+  # 3. Mypy – local, uses the active interpreter
+  - repo: local
+    hooks:
+      - id: mypy
+        name: type checker
+        entry: .venv/bin/python -m mypy doc_parser --strict --explicit-package-bases --ignore-missing-imports
+        language: system        #  ⬅ use whatever python is on PATH
+        pass_filenames: false
+
+  # 4. Pytest
+  - repo: local
+    hooks:
+      - id: pytest
+        name: pytest
+        entry: .venv/bin/python -m pytest -q tests
+        language: system
+        types: [python]
+        pass_filenames: false
+        always_run: true
+        require_serial: true

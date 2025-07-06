@@ -1,29 +1,51 @@
-"""Reusable helpers for basic file validation.
+"""File validation utilities.
 
-These helpers centralise the repetitive checks found in individual parser
-``validate_input`` implementations (file existence & extension checks).
-Additional domain-specific validation (e.g. opening a workbook) still lives in
-the parser itself.
+Provides helpers for common file validation tasks, such as checking existence,
+file type, and extension matching.
+
+Functions:
+    is_supported_file(path: Path, extensions: Sequence[str]) -> bool
+
+Examples:
+    >>> from pathlib import Path
+    >>> from doc_parser.utils.file_validators import is_supported_file
+    >>> is_supported_file(Path("data/sample.xlsx"), ["xlsx", ".xls"])
+    True
+    >>> is_supported_file(Path("data/sample.txt"), ["pdf", "docx"])
+    False
 """
 
+from collections.abc import Sequence
 from pathlib import Path
-from typing import Sequence
 
 
-def is_supported_file(path: Path, extensions: Sequence[str]) -> bool:  # noqa: D401
-    """Return *True* iff *path* exists, is a file, and matches *extensions*.
+def is_supported_file(path: Path, extensions: Sequence[str]) -> bool:
+    """Return True if path exists, is a file, and matches one of the extensions.
 
     *extensions* may be provided with or without a leading dot and is compared
     case-insensitively.
+
+    Args:
+        path (Path): Path to check.
+        extensions (Sequence[str]): File extensions to match (e.g., ['pdf', '.docx']).
+
+    Returns:
+        bool: True if path exists, is a file, and has one of the specified extensions.
+
+    Example:
+        >>> from pathlib import Path
+        >>> from doc_parser.utils.file_validators import is_supported_file
+        >>> is_supported_file(Path("report.pdf"), ["pdf"])
+        True
     """
     if not path.exists() or not path.is_file():
         return False
 
     ext = path.suffix.lower()
-    for e in extensions:
-        e = e.lower()
-        if not e.startswith("."):
-            e = f".{e}"
-        if ext == e:
+    for raw_ext in extensions:
+        candidate = raw_ext.lower()
+        if not candidate.startswith("."):
+            candidate = f".{candidate}"
+        if ext == candidate:
             return True
     return False

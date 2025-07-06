@@ -1,14 +1,9 @@
-"""
-Document Parser Library
+"""Document Parser Library.
 
 A modular, extensible document parsing library supporting multiple formats.
 """
 
 __version__ = "0.1.0"
-
-from .core.registry import ParserRegistry
-from .core.base import BaseParser, ParseResult
-from .core.exceptions import ParserError, ConfigurationError
 
 # ---------------------------------------------------------------------------
 # Ensure all built-in parsers are imported so they self-register with
@@ -16,13 +11,15 @@ from .core.exceptions import ParserError, ConfigurationError
 # call `ParserRegistry.get_parser(...)` without manually importing each parser
 # module first.
 # ---------------------------------------------------------------------------
-
-from . import parsers as _builtin_parsers  # noqa: F401, E402 unused-import
+from . import parsers as _builtin_parsers  # noqa: F401 unused-import
+from .core.base import BaseParser, ParseResult
+from .core.exceptions import ConfigurationError, ParserError
+from .core.registry import ParserRegistry
 
 __all__ = [
-    "ParserRegistry",
     "BaseParser",
+    "ConfigurationError",
     "ParseResult",
     "ParserError",
-    "ConfigurationError",
+    "ParserRegistry",
 ]

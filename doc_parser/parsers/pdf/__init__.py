@@ -1,7 +1,7 @@
 """PDF parser implementation."""
 
-from .parser import PDFParser
 from .extractors import VisionExtractor
+from .parser import PDFParser
 
 __all__ = [
     "PDFParser",

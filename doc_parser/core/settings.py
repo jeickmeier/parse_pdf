@@ -10,13 +10,39 @@ This model replaces the legacy ``ParserConfig`` dataclass.  It provides:
 from __future__ import annotations
 
 from pathlib import Path
-from typing import Any, Dict, Optional
+from typing import Any
 
 from pydantic import BaseModel, Field, field_validator
 
 
 class Settings(BaseModel):
-    """Top-level configuration shared by all parsers."""
+    """Top-level configuration shared by all parsers.
+
+    This Pydantic v2 model centralizes all user-configurable settings:
+
+    Attributes:
+        cache_dir (Path): Directory to store cache files. Auto-created on init.
+        output_dir (Path): Directory for outputs. Auto-created on init.
+        max_workers (int): Maximum number of concurrent workers.
+        timeout (int): Request and processing timeout in seconds.
+        retry_count (int): Number of retry attempts for failed operations.
+        batch_size (int): Default batch size for parsers and extractors.
+        use_cache (bool): Enable or disable result caching.
+        model_provider (str): LLM provider (e.g., 'openai').
+        model_name (str): LLM model name.
+        output_format (str): Default output format ('markdown' or 'json').
+        parser_settings (Dict[str, Dict[str, Any]]): Parser-specific overrides.
+        post_prompt (Optional[str]): Prompt for secondary LLM-based post-processing.
+        response_model (Optional[str]): Dotted path for structured response model.
+
+    Examples:
+        >>> from doc_parser.core.settings import Settings
+        >>> settings = Settings(cache_dir="my_cache", output_format="json", parser_settings={"pdf": {"dpi": 200}})
+        >>> print(settings.cache_dir)
+        my_cache
+        >>> print(settings.get_parser_config("pdf"))
+        {'dpi': 200}
+    """
 
     # ---------------------------------------------------------------------
     # Directory settings
@@ -45,37 +71,59 @@ class Settings(BaseModel):
     # ------------------------------------------------------------------
     # Output settings
     # ------------------------------------------------------------------
-    output_format: str = (
-        "markdown"  # FIXME: will be removed in favour of explicit parse methods
-    )
+    output_format: str = "markdown"  # FIXME: will be removed in favour of explicit parse methods
 
     # ------------------------------------------------------------------
     # Parser-specific overrides
     # ------------------------------------------------------------------
-    parser_settings: Dict[str, Dict[str, Any]] = Field(default_factory=dict)
+    parser_settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
 
     # ------------------------------------------------------------------
     # Post-processing
     # ------------------------------------------------------------------
-    post_prompt: Optional[str] = None
-    response_model: Optional[str] = None  # dotted import path to Pydantic model
+    post_prompt: str | None = None
+    response_model: str | None = None  # dotted import path to Pydantic model
 
     # ------------------------------------------------------------------
     # Validators & helpers
     # ------------------------------------------------------------------
     @field_validator("cache_dir", "output_dir", mode="before")
-    def _coerce_to_path(cls, v: str | Path) -> Path:  # noqa: D401
+    def _coerce_to_path(cls, v: str | Path) -> Path:  # noqa: N805
         """Ensure *v* is a ``Path`` instance and create directories."""
         p = Path(v)
         p.mkdir(parents=True, exist_ok=True)
         return p
 
-    def parser_cfg(self, name: str) -> Dict[str, Any]:
-        """Return the sub-config dict for a given *parser* name (may be empty)."""
+    def parser_cfg(self, name: str) -> dict[str, Any]:
+        """Return the configuration dictionary for the specified parser.
+
+        Args:
+            name (str): Registered parser name.
+
+        Returns:
+            Dict[str, Any]: Parser-specific settings or an empty dict if none configured.
+
+        Example:
+            >>> settings = Settings(parser_settings={"excel": {"include_formulas": True}})
+            >>> settings.parser_cfg("excel")
+            {'include_formulas': True}
+        """
         return self.parser_settings.get(name, {})
 
-    def get_parser_config(self, name: str) -> Dict[str, Any]:
-        """Alias for parser_cfg maintained for backward compatibility."""
+    def get_parser_config(self, name: str) -> dict[str, Any]:
+        """Alias for parser_cfg for backward compatibility.
+
+        Args:
+            name (str): Registered parser name.
+
+        Returns:
+            Dict[str, Any]: Same as parser_cfg(name).
+
+        Example:
+            >>> settings = Settings(parser_settings={"pdf": {"dpi": 300}})
+            >>> settings.get_parser_config("pdf")
+            {'dpi': 300}
+        """
         return self.parser_cfg(name)
 
     model_config = {

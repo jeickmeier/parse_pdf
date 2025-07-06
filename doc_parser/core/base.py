@@ -1,22 +1,49 @@
-"""Abstract base classes for document parsers."""
+"""Abstract base classes for document parsers.
+
+This module provides core abstractions and utilities for building document parsers:
+
+- ``ParseResult``: Data model for parser outputs, including serialization, saving, and metadata handling.
+- ``BaseParser``: Abstract base class that handles caching, orchestrates parsing logic, and supports post-processing.
+- ``BaseExtractor``: Abstract base class for implementing custom content extractors (e.g., vision or OCR models).
+
+Examples:
+>>> from pathlib import Path
+>>> from doc_parser.core.base import BaseParser, ParseResult
+>>> from doc_parser.core.settings import Settings
+>>> settings = Settings(use_cache=False)
+>>> class DummyParser(BaseParser):
+...     async def _parse(self, input_path: Path, **kwargs):
+...         return ParseResult(content="dummy content", metadata={"file": input_path.name})
+...
+...     async def validate_input(self, input_path: Path) -> bool:
+...         return True
+>>> parser = DummyParser(settings)
+>>> result = parser.parse_sync(Path("dummy.txt"))
+>>> assert isinstance(result, ParseResult)
+>>> print(result.content)
+"dummy content"
+"""
 
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-from pathlib import Path
-from typing import TYPE_CHECKING, Any, Dict, List, Optional
+import asyncio
+from datetime import datetime
 import hashlib
 import json
-from datetime import datetime
-from pydantic import BaseModel, Field
-import asyncio
+from typing import TYPE_CHECKING, Any
 
-from .settings import Settings
-from ..utils.cache import cache_get, cache_set
+from pydantic import BaseModel, Field
+
+from doc_parser.utils.cache import cache_get, cache_set
 
 if TYPE_CHECKING:
-    from ..prompts.base import PromptTemplate
-    from ..utils.cache import CacheManager
+    from pathlib import Path
+
+    from doc_parser.prompts.base import PromptTemplate
+    from doc_parser.utils.cache import CacheManager
+
+    from .settings import Settings
 
 
 class ParseResult(BaseModel):
@@ -28,29 +55,29 @@ class ParseResult(BaseModel):
     """
 
     content: str = ""
-    metadata: Dict[str, Any] = Field(default_factory=dict)
+    metadata: dict[str, Any] = Field(default_factory=dict)
     format: str = "markdown"
-    errors: List[str] = Field(default_factory=list)
+    errors: list[str] = Field(default_factory=list)
 
     # Post-processing
     post_content: Any | None = None
-    post_errors: List[str] = Field(default_factory=list)
+    post_errors: list[str] = Field(default_factory=list)
 
     # ------------------------------------------------------------------
     # Convenience helpers
     # ------------------------------------------------------------------
-    def to_dict(self) -> Dict[str, Any]:  # noqa: D401
+    def to_dict(self) -> dict[str, Any]:
         """Return ``dict`` representation using *model_dump* with aliases."""
         return self.model_dump(mode="python")
 
-    def to_json(self, **kwargs: Any) -> str:  # noqa: D401
+    def to_json(self, **kwargs: Any) -> str:
         """Return JSON string representation.
 
         Additional keyword arguments are forwarded to :pyfunc:`json.dumps`.
         """
         return json.dumps(self.to_dict(), indent=2, default=str, **kwargs)
 
-    def save_markdown(self, output_path: "str | Path") -> None:  # noqa: D401
+    def save_markdown(self, output_path: str | Path) -> None:
         """Write *content* to *output_path* if ``format`` is markdown."""
         from pathlib import Path as _Path
 
@@ -64,18 +91,19 @@ class ParseResult(BaseModel):
 class BaseParser(ABC):
     """Abstract base class for all parsers."""
 
-    def __init__(self, settings: "Settings") -> None:  # noqa: D401
+    def __init__(self, settings: Settings) -> None:
+        """Initialize BaseParser with specified settings."""
         # Public so downstream code can tweak if needed
-        self.settings: "Settings" = settings
+        self.settings: Settings = settings
 
-        # Lazily initialised cache manager – created on first access
-        self._cache_manager: "CacheManager | None" = None
+        # Lazily initialised cache manager - created on first access
+        self._cache_manager: CacheManager | None = None
 
     @property
-    def cache(self) -> "CacheManager":
+    def cache(self) -> CacheManager:
         """Return lazily initialised cache manager bound to *settings.cache_dir*."""
         if self._cache_manager is None:
-            from ..utils.cache import CacheManager
+            from doc_parser.utils.cache import CacheManager
 
             self._cache_manager = CacheManager(self.settings.cache_dir)
         return self._cache_manager
@@ -83,13 +111,12 @@ class BaseParser(ABC):
     # ------------------------------------------------------------------
     # Public high-level entry-point (caching baked-in)
     # ------------------------------------------------------------------
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:  # noqa: D401
+    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """Parse *input_path* returning a :class:`ParseResult`.
 
         The method transparently handles caching and post-processing, delegating
         the actual heavy-lifting to the subtype-implemented :pyfunc:`_parse`.
         """
-
         cache_key = self.generate_cache_key(input_path, **kwargs)
 
         if self.settings.use_cache:
@@ -118,14 +145,13 @@ class BaseParser(ABC):
     # Subclasses must implement the actual parsing logic here
     # ------------------------------------------------------------------
     @abstractmethod
-    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """Concrete parsing logic for a single file path."""
         raise NotImplementedError
 
     @abstractmethod
     async def validate_input(self, input_path: Path) -> bool:
-        """
-        Validate if the input file can be parsed.
+        """Validate if the input file can be parsed.
 
         Args:
             input_path: Path to the input file
@@ -133,7 +159,6 @@ class BaseParser(ABC):
         Returns:
             True if file can be parsed, False otherwise
         """
-        pass
 
     def generate_cache_key(self, input_path: Path, **kwargs: Any) -> str:
         """Return a stable cache key for *input_path* and current parser settings."""
@@ -146,7 +171,7 @@ class BaseParser(ABC):
         key_str = json.dumps(key_data, sort_keys=True, default=str)
         return hashlib.sha256(key_str.encode()).hexdigest()
 
-    def get_metadata(self, input_path: Path) -> Dict[str, Any]:
+    def get_metadata(self, input_path: Path) -> dict[str, Any]:
         """Get basic file metadata."""
         stat = input_path.stat()
         return {
@@ -162,28 +187,22 @@ class BaseParser(ABC):
 
         logger = logging.getLogger(__name__)
         try:
-            from ..utils.llm_post_processor import LLMPostProcessor
+            from doc_parser.utils.llm_post_processor import LLMPostProcessor
 
-            logger.debug(
-                "Starting post-processing with prompt=%s", self.settings.post_prompt
-            )
+            logger.debug("Starting post-processing with prompt=%s", self.settings.post_prompt)
             post_processor = LLMPostProcessor(self.settings, cache_manager=self.cache)
             prompt_arg: str = self.settings.post_prompt or ""
-            result.post_content = await post_processor.process(
-                result.content, prompt_arg
-            )
-            logger.debug(
-                "Post-processing complete. Length=%s", len(str(result.post_content))
-            )
-        except Exception as exc:  # pylint: disable=broad-except
-            logger.error("Post-processing failed: %s", exc)
-            result.post_errors.append(str(exc))
+            result.post_content = await post_processor.process(result.content, prompt_arg)
+            logger.debug("Post-processing complete. Length=%s", len(str(result.post_content)))
+        except Exception:  # pylint: disable=broad-except
+            logger.exception("Post-processing failed")
+            result.post_errors.append("Post-processing failed")
 
     # ------------------------------------------------------------------
     # Backwards-compat internal alias — remove once all modules migrated.
     # ------------------------------------------------------------------
-    @property  # noqa: D401
-    def config(self) -> "Settings":
+    @property
+    def config(self) -> Settings:
         """Alias for *settings* to minimise refactor changes downstream."""
         return self.settings
 
@@ -191,7 +210,7 @@ class BaseParser(ABC):
     # Convenience wrappers for explicit output modes
     # ------------------------------------------------------------------
 
-    async def parse_markdown(self, input_path: Path, **kwargs: Any) -> ParseResult:  # noqa: D401
+    async def parse_markdown(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """Parse *input_path* and return markdown content.
 
         This helper temporarily sets ``settings.output_format`` to ``"markdown"``
@@ -205,7 +224,7 @@ class BaseParser(ABC):
         finally:
             self.settings.output_format = original
 
-    async def parse_json(self, input_path: Path, **kwargs: Any) -> ParseResult:  # noqa: D401
+    async def parse_json(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """Parse *input_path* and return JSON content (as string)."""
         original = self.settings.output_format
         self.settings.output_format = "json"
@@ -218,7 +237,7 @@ class BaseParser(ABC):
     # Synchronous convenience wrapper
     # ------------------------------------------------------------------
 
-    def parse_sync(self, input_path: Path, **kwargs: Any) -> "ParseResult":  # noqa: D401
+    def parse_sync(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """Blocking wrapper around :pyfunc:`parse` for scripting convenience."""
         return asyncio.run(self.parse(input_path, **kwargs))
 
@@ -227,11 +246,8 @@ class BaseExtractor(ABC):
     """Base class for content extractors."""
 
     @abstractmethod
-    async def extract(
-        self, content: Any, prompt_template: Optional["PromptTemplate"] = None
-    ) -> str:
-        """
-        Extract structured information from content.
+    async def extract(self, content: Any, prompt_template: PromptTemplate | None = None) -> str:
+        """Extract structured information from content.
 
         Args:
             content: Content to extract from (format depends on implementation)
@@ -240,9 +256,7 @@ class BaseExtractor(ABC):
         Returns:
             Extracted text content
         """
-        pass
 
     @abstractmethod
     def get_default_prompt(self) -> str:
         """Get the default prompt for this extractor."""
-        pass

@@ -1,23 +1,63 @@
-"""DOCX parser implementation."""
+"""DOCX parser implementation.
 
+This module provides a parser for Microsoft Word .docx files with:
+- Content extraction as Markdown or JSON
+- Image and header/footer extraction
+- Metadata extraction (paragraph, table, section counts, author, title)
+
+Examples:
+>>> from pathlib import Path
+>>> import asyncio
+>>> from doc_parser.parsers.docx.parser import DocxParser
+>>> from doc_parser.core.settings import Settings
+>>> settings = Settings(output_format="markdown")
+>>> parser = DocxParser(settings)
+>>> result = asyncio.run(parser.parse(Path("example.docx")))
+>>> print(result.metadata["paragraphs"])  # Number of paragraphs extracted
+"""
+
+from collections.abc import Iterable
+import json
 from pathlib import Path
+from typing import Any
+
 import docx
 from docx.document import Document
+from docx.opc.exceptions import PackageNotFoundError
 from docx.table import Table
 from docx.text.paragraph import Paragraph
-import json
-from typing import Any, Iterable, Union, Dict, List
 
-from ...core.base import BaseParser, ParseResult
-from ...core.registry import ParserRegistry
-from ...core.settings import Settings
-from ...utils.file_validators import is_supported_file
-from ...utils.format_helpers import rows_to_markdown
+from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.registry import ParserRegistry
+from doc_parser.core.settings import Settings
+from doc_parser.utils.file_validators import is_supported_file
+from doc_parser.utils.format_helpers import rows_to_markdown
 
 
 @ParserRegistry.register("docx", [".docx"])
 class DocxParser(BaseParser):
-    """Parser for Word documents."""
+    """Parser for Microsoft Word documents (.docx).
+
+    Provides methods to validate, parse, and extract content in Markdown or JSON formats.
+
+    Args:
+        config (Settings): Global parser settings instance.
+
+    Attributes:
+        extract_images (bool): Whether to extract embedded images.
+        extract_headers_footers (bool): Whether to include headers and footers.
+        preserve_formatting (bool): Whether to preserve bold, italic, and underline.
+
+    Examples:
+        >>> from pathlib import Path
+        >>> import asyncio
+        >>> from doc_parser.parsers.docx.parser import DocxParser
+        >>> from doc_parser.core.settings import Settings
+        >>> settings = Settings(parser_settings={"docx": {"extract_images": False}})
+        >>> parser = DocxParser(settings)
+        >>> result = asyncio.run(parser.parse(Path("sample.docx")))
+        >>> assert "tables" in result.metadata
+    """
 
     def __init__(self, config: Settings):
         """Initialize DOCX parser."""
@@ -30,27 +70,48 @@ class DocxParser(BaseParser):
         self.preserve_formatting = docx_config.get("preserve_formatting", True)
 
     async def validate_input(self, input_path: Path) -> bool:
-        """Validate if the input file is a valid DOCX file."""
+        """Validate whether the input path points to a valid DOCX file.
+
+        Args:
+            input_path (Path): Path to the .docx file.
+
+        Returns:
+            bool: True if the file is a valid DOCX document, False otherwise.
+
+        Example:
+            >>> import asyncio
+            >>> from pathlib import Path
+            >>> valid = asyncio.run(DocxParser(Settings()).validate_input(Path("doc.docx")))
+            >>> print(valid)
+        """
         if not is_supported_file(input_path, [".docx"]):
             return False
-
         try:
             # Try to open with python-docx to validate
             docx.Document(str(input_path))
-            return True
-        except Exception:
+        except PackageNotFoundError:
             return False
+        return True
 
-    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
-        """
-        Parse DOCX document.
+    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+        """Parse a DOCX document and return the results as a ParseResult.
+
+        Processes the document using python-docx, choosing format based on settings.output_format.
 
         Args:
-            input_path: Path to DOCX file
-            **kwargs: Additional options
+            input_path (Path): Path to the DOCX file.
+            **_kwargs: Additional parser options (currently unused).
 
         Returns:
-            ParseResult with extracted content
+            ParseResult: Contains content, metadata, format, and errors.
+
+        Example:
+            >>> import asyncio
+            >>> from pathlib import Path
+            >>> parser = DocxParser(Settings())
+            >>> result = asyncio.run(parser.parse(Path("example.docx")))
+            >>> print(result.format)
+            'markdown'
         """
         if not await self.validate_input(input_path):
             return ParseResult(
@@ -64,21 +125,19 @@ class DocxParser(BaseParser):
 
             # Extract content based on format
             if self.settings.output_format == "markdown":
-                content = await self._extract_as_markdown(doc, input_path)
+                content = await self._extract_as_markdown(doc)
             elif self.settings.output_format == "json":
-                content = await self._extract_as_json(doc, input_path)
+                content = await self._extract_as_json(doc)
             else:
-                content = await self._extract_as_markdown(doc, input_path)
+                content = await self._extract_as_markdown(doc)
 
             # Build metadata
             metadata = self.get_metadata(input_path)
-            metadata.update(
-                {
-                    "paragraphs": len(doc.paragraphs),
-                    "tables": len(doc.tables),
-                    "sections": len(doc.sections),
-                }
-            )
+            metadata.update({
+                "paragraphs": len(doc.paragraphs),
+                "tables": len(doc.tables),
+                "sections": len(doc.sections),
+            })
 
             # Add document properties if available
             if hasattr(doc.core_properties, "title") and doc.core_properties.title:
@@ -86,20 +145,36 @@ class DocxParser(BaseParser):
             if hasattr(doc.core_properties, "author") and doc.core_properties.author:
                 metadata["author"] = doc.core_properties.author
 
-            return ParseResult(
-                content=content, metadata=metadata, format=self.settings.output_format
-            )
+            return ParseResult(content=content, metadata=metadata, format=self.settings.output_format)
 
-        except Exception as e:
+        except (ValueError, OSError, PackageNotFoundError, KeyError) as exc:
             return ParseResult(
                 content="",
                 metadata=self.get_metadata(input_path),
-                errors=[f"Failed to parse DOCX file: {str(e)}"],
+                errors=[f"Failed to parse DOCX file: {exc!s}"],
             )
 
-    async def _extract_as_markdown(self, doc: Document, input_path: Path) -> str:
-        """Extract DOCX content as Markdown."""
-        content_parts: List[str] = []
+    async def _extract_as_markdown(self, doc: Document) -> str:
+        """Convert a python-docx Document to a Markdown string.
+
+        Iterates through paragraphs and tables, generating GitHub-flavored Markdown.
+        Includes headers and footers if enabled in settings.
+
+        Args:
+            doc (Document): python-docx Document object.
+
+        Returns:
+            str: Combined Markdown content.
+
+        Example:
+            >>> import asyncio, docx
+            >>> from pathlib import Path
+            >>> parser = DocxParser(Settings())
+            >>> doc = docx.Document(str(Path("doc.docx")))
+            >>> md = asyncio.run(parser._extract_as_markdown(doc))
+            >>> assert "|" in md or md.startswith("#")
+        """
+        content_parts: list[str] = []
 
         # Process document elements in order
         for element in self._iter_block_items(doc):
@@ -121,9 +196,27 @@ class DocxParser(BaseParser):
 
         return "\n\n".join(content_parts)
 
-    async def _extract_as_json(self, doc: Document, input_path: Path) -> str:
-        """Extract DOCX content as JSON."""
-        data: Dict[str, Any] = {
+    async def _extract_as_json(self, doc: Document) -> str:
+        """Serialize DOCX content into a JSON string.
+
+        Gathers paragraphs and tables into JSON arrays, with document properties.
+
+        Args:
+            doc (Document): python-docx Document object.
+
+        Returns:
+            str: JSON-formatted content with keys 'paragraphs', 'tables', and 'properties'.
+
+        Example:
+            >>> import asyncio, json, docx
+            >>> from pathlib import Path
+            >>> parser = DocxParser(Settings())
+            >>> doc = docx.Document(str(Path("doc.docx")))
+            >>> js = asyncio.run(parser._extract_as_json(doc))
+            >>> data = json.loads(js)
+            >>> assert isinstance(data.get("paragraphs"), list)
+        """
+        data: dict[str, Any] = {
             "paragraphs": [],
             "tables": [],
             "properties": {},
@@ -152,12 +245,8 @@ class DocxParser(BaseParser):
 
         # Extract tables
         for table in doc.tables:
-            table_data = []
-            for row in table.rows:
-                row_data = []
-                for cell in row.cells:
-                    row_data.append(cell.text.strip())
-                table_data.append(row_data)
+            # Use list comprehension for performance
+            table_data = [[cell.text.strip() for cell in row.cells] for row in table.rows]
             tables_list = data["tables"]
             if isinstance(tables_list, list):
                 tables_list.append(table_data)
@@ -170,16 +259,11 @@ class DocxParser(BaseParser):
 
         return json.dumps(data, indent=2, ensure_ascii=False)
 
-    def _iter_block_items(
-        self, parent: Union[Document, Any]
-    ) -> Iterable[Union[Paragraph, Table]]:
-        """
-        Yield each paragraph and table child within parent, in document order.
-        """
-        from docx.document import Document
+    def _iter_block_items(self, parent: Document | Any) -> Iterable[Paragraph | Table]:
+        """Yield each paragraph and table child within parent, in document order."""
         from docx.oxml.table import CT_Tbl
         from docx.oxml.text.paragraph import CT_P
-        from docx.table import _Cell, Table
+        from docx.table import Table, _Cell
         from docx.text.paragraph import Paragraph
 
         if isinstance(parent, Document):
@@ -187,7 +271,7 @@ class DocxParser(BaseParser):
         elif isinstance(parent, _Cell):
             parent_elm = parent._tc
         else:
-            raise ValueError("Parent must be Document or _Cell")
+            raise TypeError("Parent must be Document or _Cell")
 
         for child in parent_elm.iterchildren():
             if isinstance(child, CT_P):
@@ -196,37 +280,35 @@ class DocxParser(BaseParser):
                 yield Table(child, parent)
 
     def _paragraph_to_markdown(self, paragraph: Paragraph) -> str:
-        """Convert a paragraph to Markdown."""
+        """Convert a python-docx Paragraph to Markdown with reduced branching."""
         text = paragraph.text.strip()
         if not text:
             return ""
 
-        # Detect heading styles
         style_name = paragraph.style.name if paragraph.style else ""
 
-        if style_name.startswith("Heading 1"):
-            return f"# {text}"
-        elif style_name.startswith("Heading 2"):
-            return f"## {text}"
-        elif style_name.startswith("Heading 3"):
-            return f"### {text}"
-        elif style_name.startswith("Heading 4"):
-            return f"#### {text}"
-        elif style_name.startswith("Heading 5"):
-            return f"##### {text}"
-        elif style_name.startswith("Heading 6"):
-            return f"###### {text}"
+        # -------------------------------------------------------------
+        # Heading styles 1-6
+        # -------------------------------------------------------------
+        min_heading_prefix_len = 9  # len('Heading X')
+        if style_name.startswith("Heading ") and len(style_name) >= min_heading_prefix_len and style_name[8].isdigit():
+            level_char = style_name[8]
+            level = int(level_char)
+            level = max(1, min(level, 6))
+            return "#" * level + f" {text}"
 
-        # Handle list items
+        # -------------------------------------------------------------
+        # List items
+        # -------------------------------------------------------------
         if style_name.startswith("List"):
-            if "Bullet" in style_name:
-                return f"- {text}"
-            else:
-                return f"1. {text}"
+            bullet_prefix = "- " if "Bullet" in style_name else "1. "
+            return f"{bullet_prefix}{text}"
 
-        # Handle formatting if preserving
+        # -------------------------------------------------------------
+        # Inline formatting (bold / italic / underline)
+        # -------------------------------------------------------------
         if self.preserve_formatting and paragraph.runs:
-            formatted_text = ""
+            pieces: list[str] = []
             for run in paragraph.runs:
                 run_text = run.text
                 if run.bold:
@@ -235,8 +317,8 @@ class DocxParser(BaseParser):
                     run_text = f"*{run_text}*"
                 if run.underline:
                     run_text = f"<u>{run_text}</u>"
-                formatted_text += run_text
-            return formatted_text
+                pieces.append(run_text)
+            text = "".join(pieces) if pieces else text
 
         return text
 
@@ -252,17 +334,13 @@ class DocxParser(BaseParser):
         for section in doc.sections:
             # Header
             if section.header and section.header.paragraphs:
-                header_text = " ".join(
-                    p.text.strip() for p in section.header.paragraphs if p.text.strip()
-                )
+                header_text = " ".join(p.text.strip() for p in section.header.paragraphs if p.text.strip())
                 if header_text:
                     content.append(f"**Header:** {header_text}")
 
             # Footer
             if section.footer and section.footer.paragraphs:
-                footer_text = " ".join(
-                    p.text.strip() for p in section.footer.paragraphs if p.text.strip()
-                )
+                footer_text = " ".join(p.text.strip() for p in section.footer.paragraphs if p.text.strip())
                 if footer_text:
                     content.append(f"**Footer:** {footer_text}")
 

@@ -1,0 +1,49 @@
+name: CI
+
+on:
+  push:
+    branches: ["main", "master"]
+  pull_request:
+    branches: ["main", "master"]
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      # Install uv and enable caching so dependency resolution mirrors local usage
+      - name: Install uv and configure caching
+        uses: astral-sh/setup-uv@v6
+        with:
+          python-version: "3.12"
+          enable-cache: true
+          cache-dependency-glob: |
+            pyproject.toml
+            uv.lock
+
+      - name: Install project and tooling dependencies via uv
+        run: |
+          uv pip install --upgrade pip
+          uv pip install .
+          uv pip install ruff mypy pytest pytest-cov
+
+      - name: Run Ruff formatter
+        run: ruff format .
+
+      - name: Run Ruff checks (auto-fix)
+        run: ruff check . --fix
+
+      - name: Static type-checking with MyPy (strict)
+        run: mypy doc_parser --strict --explicit-package-bases --ignore-missing-imports
+
+      - name: Run tests with coverage (fail < 80%)
+        run: pytest -q tests

@@ -15,8 +15,8 @@ from pathlib import Path
 from pptx import Presentation  # type: ignore
 from pptx.util import Inches  # type: ignore
 
-from doc_parser.core.settings import Settings
 from doc_parser.core.registry import ParserRegistry
+from doc_parser.core.settings import Settings
 
 
 def _build_sample_pptx(path: Path) -> None:
@@ -70,8 +70,7 @@ async def _demo() -> None:
 
     # Run parser synchronously for demo purposes
     async def _main():
-        res = await parser.parse(sample_path)
-        print(res.content[:1000])
+        await parser.parse(sample_path)
 
     if __name__ == "__main__":  # pragma: no cover
         asyncio.run(_main())

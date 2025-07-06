@@ -1,20 +1,54 @@
-"""Customizable prompt templates for document extraction."""
+"""Prompt template system for document parsers using Jinja2.
 
-from pathlib import Path
-from typing import Dict, Any, Optional, List
-from jinja2 import Template
+This module provides:
+- PromptTemplate: Load, render, and manage Jinja2 templates with default variables.
+- PromptRegistry: Global registry to register and retrieve named templates.
+
+Examples:
+    >>> from doc_parser.prompts.base import PromptTemplate, PromptRegistry
+    >>> template = PromptTemplate("Hello {{ name }}!", {"name": "World"})
+    >>> print(template.render())
+    Hello World!
+    >>> PromptRegistry.register("greet", template)
+    >>> reg = PromptRegistry.get("greet")
+    >>> print(reg.render(name="Alice"))
+    Hello Alice!
+"""
+
 import json
+from pathlib import Path
+from typing import Any, ClassVar
+
+from jinja2 import Template
 
 
 # pylint: disable=too-many-instance-attributes
 class PromptTemplate:
-    """Customizable prompt templates using Jinja2."""
+    """Customizable prompt templates using Jinja2.
 
-    def __init__(
-        self, template_str: str, variables: Optional[Dict[str, Any]] = None
-    ) -> None:
-        """
-        Initialize prompt template.
+    A PromptTemplate wraps a Jinja2 template string with optional default variables,
+    enabling rendering with additional context at call time.
+
+    Args:
+        template_str (str): Jinja2 template string.
+        variables (Optional[Dict[str, Any]]): Default variables for rendering.
+
+    Methods:
+        render(**kwargs) -> str: Render the template with combined default and override variables.
+        from_file(template_path, variables=None) -> PromptTemplate: Load template from .j2 file with optional JSON vars.
+        save(path) -> None: Save template string to file and variables to JSON.
+
+    Examples:
+        >>> from doc_parser.prompts.base import PromptTemplate
+        >>> tmpl = PromptTemplate("Value: {{ x }}", {"x": 1})
+        >>> print(tmpl.render())
+        Value: 1
+        >>> print(tmpl.render(x=2))
+        Value: 2
+    """
+
+    def __init__(self, template_str: str, variables: dict[str, Any] | None = None) -> None:
+        """Initialize prompt template.
 
         Args:
             template_str: Jinja2 template string
@@ -22,11 +56,10 @@ class PromptTemplate:
         """
         self.template: Template = Template(template_str)
         self._template_str: str = template_str
-        self.variables: Dict[str, Any] = variables or {}
+        self.variables: dict[str, Any] = variables or {}
 
     def render(self, **kwargs: Any) -> str:
-        """
-        Render prompt with variables.
+        """Render prompt with variables.
 
         Args:
             **kwargs: Template variables
@@ -38,51 +71,80 @@ class PromptTemplate:
         return self.template.render(**context)
 
     @classmethod
-    def from_file(
-        cls, template_path: Path, variables: Optional[Dict[str, Any]] = None
-    ) -> "PromptTemplate":
-        """
-        Load template from file.
+    def from_file(cls, template_path: Path, variables: dict[str, Any] | None = None) -> "PromptTemplate":
+        """Load a PromptTemplate from a .j2 file, optionally loading default variables from a companion .json file.
 
         Args:
-            template_path: Path to template file
-            variables: Default template variables
+            template_path (Path): Path to the Jinja2 .j2 template file.
+            variables (Optional[Dict[str, Any]]): Default variables, overrides companion JSON if provided.
 
         Returns:
-            PromptTemplate instance
+            PromptTemplate: New instance with template content and variables.
+
+        Example:
+            >>> from pathlib import Path
+            >>> from doc_parser.prompts.base import PromptTemplate
+            >>> tmpl = PromptTemplate.from_file(Path("templates/example.j2"))
+            >>> print(tmpl.render())
         """
-        with open(template_path, "r") as f:
+        with template_path.open() as f:
             template_str = f.read()
 
         # Load variables from companion JSON file if exists
         var_path = template_path.with_suffix(".json")
         if var_path.exists() and variables is None:
-            with open(var_path, "r") as f:
+            with var_path.open() as f:
                 variables = json.load(f)
 
         return cls(template_str, variables)
 
     def save(self, path: Path) -> None:
-        """Save template to file."""
-        with open(path, "w") as f:
+        """Save the template string to the specified file and its variables to a .json sidecar.
+
+        Args:
+            path (Path): File path to save the Jinja2 template string.
+
+        Example:
+            >>> t = PromptTemplate("Hi")
+            >>> t.save(Path("out.j2"))
+        """
+        with path.open("w") as f:
             f.write(self._template_str)
 
         # Save variables if any
         if self.variables:
             var_path = path.with_suffix(".json")
-            with open(var_path, "w") as f:
+            with var_path.open("w") as f:
                 json.dump(self.variables, f, indent=2)
 
 
 class PromptRegistry:
-    """Registry for managing prompt templates."""
+    """Singleton registry for managing named PromptTemplate instances.
 
-    _templates: Dict[str, PromptTemplate] = {}
-    _template_dir: Optional[Path] = None
+    Provides global lookup and registration of templates loaded at init or dynamically.
+
+    Examples:
+        >>> from doc_parser.prompts.base import PromptRegistry, PromptTemplate
+        >>> tmpl = PromptTemplate("Test")
+        >>> PromptRegistry.register("test", tmpl)
+        >>> assert "test" in PromptRegistry.list_templates()
+        >>> print(PromptRegistry.get("test").render())
+        Test
+    """
+
+    _templates: ClassVar[dict[str, PromptTemplate]] = {}
+    _template_dir: ClassVar[Path | None] = None
 
     @classmethod
     def init(cls, template_dir: Path) -> None:
-        """Initialize registry with template directory."""
+        """Initialize the registry by loading all .j2 templates from a directory.
+
+        Args:
+            template_dir (Path): Directory containing .j2 template files.
+
+        Example:
+            >>> PromptRegistry.init(Path("templates"))
+        """
         cls._template_dir = template_dir
         cls._load_templates()
 
@@ -98,15 +160,35 @@ class PromptRegistry:
 
     @classmethod
     def register(cls, name: str, template: PromptTemplate) -> None:
-        """Register a prompt template."""
+        """Register a new PromptTemplate under a given name.
+
+        Args:
+            name (str): Unique template identifier.
+            template (PromptTemplate): Template to register.
+        """
         cls._templates[name] = template
 
     @classmethod
-    def get(cls, name: str) -> Optional[PromptTemplate]:
-        """Get template by name."""
+    def get(cls, name: str) -> PromptTemplate | None:
+        """Retrieve a registered PromptTemplate by its name.
+
+        Args:
+            name (str): Template identifier.
+
+        Returns:
+            Optional[PromptTemplate]: The template if found, else None.
+        """
         return cls._templates.get(name)
 
     @classmethod
-    def list_templates(cls) -> List[str]:
-        """List available template names."""
+    def list_templates(cls) -> list[str]:
+        """List all registered template names in the registry.
+
+        Returns:
+            List[str]: List of template identifiers.
+
+        Example:
+            >>> PromptRegistry.list_templates()
+            ['pdf_extraction', 'custom']
+        """
         return list(cls._templates.keys())

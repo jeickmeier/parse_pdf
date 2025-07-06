@@ -1,21 +1,66 @@
-"""Caching utilities for document parsers."""
+"""Caching utilities for parsed documents.
 
-import json
+This module provides CacheManager for persistent JSON-based caching of parser results,
+with optional TTL support, and lightweight functional helpers for simple cache operations.
+
+Classes:
+    CacheManager: Manages cache entries with TTL, metadata, and file I/O.
+
+Functions:
+    cache_get(manager, key): Async helper to retrieve a cached entry.
+    cache_set(manager, key, data): Async helper to store a cache entry.
+
+Examples:
+    >>> import asyncio
+    >>> from pathlib import Path
+    >>> from datetime import timedelta
+    >>> from doc_parser.utils.cache import CacheManager, cache_set, cache_get
+    >>> cm = CacheManager(Path("cache_dir"), ttl=timedelta(seconds=60))
+    >>> await cache_set(cm, "test", {"foo": "bar"})
+    >>> data = await cache_get(cm, "test")
+    >>> print(data)
+    {'foo':'bar'}
+"""
+
 import asyncio
-from pathlib import Path
-from typing import Any, Optional, Dict, cast, Dict as _Dict, Any as _Any
-import aiofiles
 from datetime import datetime, timedelta
+import json
+from pathlib import Path
+from typing import Any, Any as _Any, cast
 
-from ..core.exceptions import CacheError
+import aiofiles
+
+from doc_parser.core.exceptions import CacheError
 
 
 class CacheManager:
-    """Manages caching for parsed documents."""
+    """Manages JSON file caching for parsed documents with optional expiration (TTL).
 
-    def __init__(self, cache_dir: Path, ttl: Optional[timedelta] = None):
-        """
-        Initialize cache manager.
+    Attributes:
+        cache_dir (Path): Directory where cache files are stored (auto-created).
+        ttl (Optional[timedelta]): Time-to-live for entries; None for no expiration.
+
+    Methods:
+        get(key) -> Optional[Dict[str, Any]]: Retrieve cached data or None if missing/expired.
+        set(key, data): Store data under the key with metadata.
+        delete(key): Remove cache entry and metadata.
+        clear(): Delete all cache files in the cache_dir.
+        get_size() -> int: Return total size of cache files in bytes.
+
+    Examples:
+        >>> import asyncio
+        >>> from pathlib import Path
+        >>> from datetime import timedelta
+        >>> from doc_parser.utils.cache import CacheManager
+        >>> cm = CacheManager(Path("cache"), ttl=timedelta(minutes=5))
+        >>> await cm.set("a", {"x": 1})
+        >>> d = await cm.get("a")
+        >>> print(d)
+        {'x':1}
+    """
+
+    def __init__(self, cache_dir: Path, ttl: timedelta | None = None):
+        """Initialize cache manager.
 
         Args:
             cache_dir: Directory to store cache files
@@ -34,15 +79,17 @@ class CacheManager:
         """Get path for cache metadata file."""
         return self.cache_dir / f"{key}.meta.json"
 
-    async def get(self, key: str) -> Optional[Dict[str, Any]]:
-        """
-        Get cached data.
+    async def get(self, key: str) -> dict[str, Any] | None:
+        """Retrieve cached data for a given key.
 
         Args:
-            key: Cache key
+            key (str): Unique cache key.
 
         Returns:
-            Cached data or None if not found/expired
+            Optional[Dict[str, Any]]: Cached data dict or None if missing/expired.
+
+        Example:
+            >>> data = await cm.get("test")
         """
         cache_path = self._get_cache_path(key)
         meta_path = self._get_metadata_path(key)
@@ -53,7 +100,7 @@ class CacheManager:
         try:
             # Check expiration
             if self.ttl and meta_path.exists():
-                async with aiofiles.open(meta_path, "r") as f:
+                async with aiofiles.open(meta_path) as f:
                     metadata = json.loads(await f.read())
 
                 created = datetime.fromisoformat(metadata["created"])
@@ -62,22 +109,15 @@ class CacheManager:
                     return None
 
             # Read cached data
-            async with aiofiles.open(cache_path, "r") as f:
+            async with aiofiles.open(cache_path) as f:
                 data = json.loads(await f.read())
 
-            return cast(Dict[str, Any], data)
+            return cast("dict[str, Any]", data)
+        except (OSError, json.JSONDecodeError) as e:
+            raise CacheError(f"Failed to read cache: {e}") from e
 
-        except Exception as e:
-            raise CacheError(f"Failed to read cache: {e}")
-
-    async def set(self, key: str, data: Dict[str, Any]) -> None:
-        """
-        Set cached data.
-
-        Args:
-            key: Cache key
-            data: Data to cache
-        """
+    async def set(self, key: str, data: dict[str, Any]) -> None:
+        """Persist *data* in *manager* under *key*."""
         cache_path = self._get_cache_path(key)
         meta_path = self._get_metadata_path(key)
 
@@ -94,9 +134,8 @@ class CacheManager:
                 }
                 async with aiofiles.open(meta_path, "w") as f:
                     await f.write(json.dumps(metadata, indent=2))
-
-        except Exception as e:
-            raise CacheError(f"Failed to write cache: {e}")
+        except (OSError, TypeError) as e:
+            raise CacheError(f"Failed to write cache: {e}") from e
 
     async def delete(self, key: str) -> None:
         """Delete cached data."""
@@ -122,17 +161,37 @@ class CacheManager:
 
 
 # ---------------------------------------------------------------------------
-# Lightweight functional helpers – preferred over calling ``CacheManager``
+# Lightweight functional helpers - preferred over calling ``CacheManager``
 # methods directly from client code.  They keep call-sites concise and decouple
 # them from the underlying implementation should we swap backends in the future.
 # ---------------------------------------------------------------------------
 
 
-async def cache_get(manager: "CacheManager", key: str) -> Optional[Dict[str, Any]]:  # noqa: D401
-    """Return cached data for *key* using *manager* (or ``None``)."""
+async def cache_get(manager: "CacheManager", key: str) -> dict[str, Any] | None:
+    """Async helper to return cached data for a key using the specified manager.
+
+    Args:
+        manager (CacheManager): CacheManager instance.
+        key (str): Cache key.
+
+    Returns:
+        Optional[Dict[str, Any]]: Cached data or None.
+
+    Example:
+        >>> data = await cache_get(cm, "test")
+    """
     return await manager.get(key)
 
 
-async def cache_set(manager: "CacheManager", key: str, data: _Dict[str, _Any]) -> None:  # noqa: D401
-    """Persist *data* in *manager* under *key*."""
+async def cache_set(manager: "CacheManager", key: str, data: dict[str, _Any]) -> None:
+    """Async helper to store data in the cache under the specified key.
+
+    Args:
+        manager (CacheManager): CacheManager instance.
+        key (str): Cache key.
+        data (Dict[str, Any]): JSON-serializable data to cache.
+
+    Example:
+        >>> await cache_set(cm, "test", {"foo": "bar"})
+    """
     await manager.set(key, data)

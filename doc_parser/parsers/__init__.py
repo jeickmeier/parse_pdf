@@ -1,6 +1,6 @@
 """Document parser implementations."""
 
 # Import parsers to trigger registration
-from . import pdf, excel, docx, html, pptx
+from . import docx, excel, html, pdf, pptx
 
-__all__ = ["pdf", "excel", "docx", "html", "pptx"]
+__all__ = ["docx", "excel", "html", "pdf", "pptx"]

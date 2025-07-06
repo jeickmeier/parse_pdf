@@ -1,35 +1,85 @@
-"""PDF parser implementation."""
+"""PDF parser implementation.
+
+This module provides a parser for PDF documents that converts pages to images,
+extracts text using vision models, and assembles structured output.
+
+Features:
+- Convert PDF pages to images via pdf2image
+- Single and batch page extraction with async concurrency
+- Caching of page results to avoid redundant extraction
+- Rate limiting of API calls for controlled concurrency
+- Integration with OpenAI vision models via VisionExtractor
+- Configurable options: dpi, batch_size, page_range, prompt_template, output_format
+- Metadata enrichment: page count, dpi, model name
+
+Example:
+>>> import asyncio
+>>> from pathlib import Path
+>>> from doc_parser.parsers.pdf.parser import PDFParser
+>>> from doc_parser.core.settings import Settings
+>>> settings = Settings(output_format="markdown", parser_settings={"pdf": {"dpi": 200, "batch_size": 2}})
+>>> parser = PDFParser(settings)
+>>> result = asyncio.run(parser.parse(Path("sample.pdf")))
+>>> print(result.metadata["pages"], result.metadata["dpi"])
+"""
 
 from __future__ import annotations
+
 import asyncio
-from pathlib import Path
-from typing import List, Optional, Tuple, TYPE_CHECKING, Any
+from typing import TYPE_CHECKING, Any
+
 from pdf2image import convert_from_path
-from PIL import Image
 from tqdm.asyncio import tqdm
 
-from ...core.base import BaseParser, ParseResult
-from ...core.registry import ParserRegistry
-from ...core.settings import Settings
-from ...utils.async_helpers import RateLimiter
-from ...utils.cache import cache_get, cache_set
+from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.registry import ParserRegistry
+from doc_parser.utils.async_helpers import RateLimiter
+from doc_parser.utils.cache import cache_get, cache_set
+from doc_parser.utils.file_validators import is_supported_file
+
 from .extractors import VisionExtractor
-from ...utils.file_validators import is_supported_file
 
 if TYPE_CHECKING:
-    from ...prompts.base import PromptTemplate
+    from pathlib import Path
+
+    from PIL import Image
+
+    from doc_parser.core.settings import Settings
+    from doc_parser.prompts.base import PromptTemplate
 
 
 @ParserRegistry.register("pdf", [".pdf"])
 class PDFParser(BaseParser):
-    """Enhanced PDF parser with modular design."""
+    """Parser for PDF documents using image-based extraction.
+
+    Converts PDF pages into images and extracts text via vision models,
+    supporting caching and rate limiting for efficiency.
+
+    Args:
+        config (Settings): Global parser configuration.
+
+    Attributes:
+        dpi (int): Image resolution for conversion.
+        batch_size (int): Number of pages per extraction batch.
+        extractor (VisionExtractor): Vision-based text extractor.
+        rate_limiter (RateLimiter): Controls concurrent API calls.
+
+    Examples:
+        >>> import asyncio
+        >>> from pathlib import Path
+        >>> from doc_parser.parsers.pdf.parser import PDFParser
+        >>> from doc_parser.core.settings import Settings
+        >>> settings = Settings(parser_settings={"pdf": {"dpi": 300}})
+        >>> parser = PDFParser(settings)
+        >>> result = asyncio.run(parser.parse(Path("doc.pdf"), page_range=(1, 3)))
+        >>> print(result.content[:100])
+    """
 
     def __init__(self, config: Settings):
-        """
-        Initialize PDF parser.
+        """Initialize PDF parser with configuration.
 
         Args:
-            config: Parser configuration
+            config (Settings): Parser configuration object.
         """
         super().__init__(config)
 
@@ -45,28 +95,50 @@ class PDFParser(BaseParser):
         self.rate_limiter = RateLimiter(config.max_workers)
 
     async def validate_input(self, input_path: Path) -> bool:
-        """Validate if the input file is a valid PDF."""
-        if not is_supported_file(input_path, [".pdf"]):
-            return False
-
-        # Check if file is readable and not empty
-        try:
-            if input_path.stat().st_size == 0:
-                return False
-            return True
-        except Exception:
-            return False
-
-    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
-        """
-        Parse PDF document.
+        """Validate whether the input path points to a non-empty PDF file.
 
         Args:
-            input_path: Path to PDF file
-            **kwargs: Additional options (e.g., page_range, prompt_template)
+            input_path (Path): Path to the PDF file.
 
         Returns:
-            ParseResult with extracted content
+            bool: True if file exists, has .pdf extension, and is non-empty.
+
+        Example:
+            >>> import asyncio
+            >>> from pathlib import Path
+            >>> result = asyncio.run(PDFParser(Settings()).validate_input(Path("file.pdf")))
+            >>> print(result)
+        """
+        if not is_supported_file(input_path, [".pdf"]):
+            return False
+        # Check if file is readable and not empty
+        try:
+            size = input_path.stat().st_size
+        except OSError:
+            return False
+        return size != 0
+
+    async def _parse(self, input_path: Path, **_kwargs: Any) -> ParseResult:
+        """Parse a PDF document and return extraction results.
+
+        Orchestrates validation, image conversion, text extraction,
+        result combination, and metadata construction.
+
+        Args:
+            input_path (Path): Path to the PDF file.
+            **_kwargs: Additional options:
+                page_range (tuple[int, int]): Range of pages to process.
+                prompt_template (PromptTemplate|str): Custom prompt template.
+
+        Returns:
+            ParseResult: Contains content, metadata, output format, and errors.
+
+        Example:
+            >>> import asyncio
+            >>> from pathlib import Path
+            >>> parser = PDFParser(Settings())
+            >>> result = asyncio.run(parser.parse(Path("sample.pdf"), page_range=(1, 2)))
+            >>> print(result.metadata["pages"])
         """
         # Validate input
         if not await self.validate_input(input_path):
@@ -77,8 +149,8 @@ class PDFParser(BaseParser):
             )
 
         # Get options
-        page_range = kwargs.get("page_range")
-        prompt_template = kwargs.get("prompt_template")
+        page_range = _kwargs.get("page_range")
+        prompt_template = _kwargs.get("prompt_template")
 
         # Convert PDF to images
         images = await self._pdf_to_images(input_path, page_range)
@@ -91,22 +163,30 @@ class PDFParser(BaseParser):
 
         # Build metadata
         metadata = self.get_metadata(input_path)
-        metadata.update(
-            {
-                "pages": len(images),
-                "dpi": self.dpi,
-                "model": self.settings.model_name,
-            }
-        )
+        metadata.update({
+            "pages": len(images),
+            "dpi": self.dpi,
+            "model": self.settings.model_name,
+        })
 
-        return ParseResult(
-            content=content, metadata=metadata, format=self.settings.output_format
-        )
+        return ParseResult(content=content, metadata=metadata, format=self.settings.output_format)
 
-    async def _pdf_to_images(
-        self, pdf_path: Path, page_range: Optional[Tuple[int, int]] = None
-    ) -> List[Image.Image]:
-        """Convert PDF pages to images."""
+    async def _pdf_to_images(self, pdf_path: Path, page_range: tuple[int, int] | None = None) -> list[Image.Image]:
+        """Convert PDF pages to PIL Image objects.
+
+        Args:
+            pdf_path (Path): Path to the PDF document.
+            page_range (Optional[tuple[int, int]]): Inclusive range of pages to process.
+
+        Returns:
+            List[Image.Image]: List of page images.
+
+        Example:
+            >>> import asyncio
+            >>> from pathlib import Path
+            >>> images = asyncio.run(PDFParser(Settings())._pdf_to_images(Path("doc.pdf"), (1, 2)))
+            >>> print(len(images))
+        """
         kwargs = {
             "dpi": self.dpi,
             "fmt": "png",
@@ -119,19 +199,31 @@ class PDFParser(BaseParser):
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
-        images = await loop.run_in_executor(
-            None, lambda: convert_from_path(str(pdf_path), **kwargs)
-        )
+        images = await loop.run_in_executor(None, lambda: convert_from_path(str(pdf_path), **kwargs))
 
         return images
 
     async def _process_pages(
         self,
-        images: List[Image.Image],
+        images: list[Image.Image],
         pdf_path: Path,
-        prompt_template: Optional["PromptTemplate"] = None,
-    ) -> List[str]:
-        """Process pages in batches."""
+        prompt_template: PromptTemplate | None = None,
+    ) -> list[str]:
+        """Process page images asynchronously in batches with caching.
+
+        Args:
+            images (List[Image.Image]): List of page images.
+            pdf_path (Path): Path to the source PDF.
+            prompt_template (Optional[PromptTemplate]): Custom prompt or template.
+
+        Returns:
+            List[str]: Extracted text per page in original order.
+
+        Example:
+            >>> import asyncio
+            >>> imgs = asyncio.run(PDFParser(Settings())._pdf_to_images(Path("doc.pdf")))
+            >>> texts = asyncio.run(PDFParser(Settings())._process_pages(imgs, Path("doc.pdf")))
+        """
         results = []
 
         # Create batches
@@ -144,9 +236,7 @@ class PDFParser(BaseParser):
         # Process batches concurrently
         tasks = []
         for batch_images, page_nums in batches:
-            task = self._process_batch(
-                batch_images, page_nums, pdf_path, prompt_template
-            )
+            task = self._process_batch(batch_images, page_nums, pdf_path, prompt_template)
             tasks.append(task)
 
         # Execute with progress bar
@@ -160,21 +250,30 @@ class PDFParser(BaseParser):
 
     async def _process_batch(
         self,
-        images: List[Image.Image],
-        page_nums: List[int],
+        images: list[Image.Image],
+        page_nums: list[int],
         pdf_path: Path,
-        prompt_template: Optional["PromptTemplate"] = None,
-    ) -> List[str]:
-        """Process a batch of pages (images) asynchronously, leveraging cache."""
+        prompt_template: PromptTemplate | None = None,
+    ) -> list[str]:
+        """Extract content for a batch of pages and cache results.
 
+        Args:
+            images (List[Image.Image]): Subset of page images.
+            page_nums (List[int]): Corresponding page numbers.
+            pdf_path (Path): Source PDF path.
+            prompt_template (Optional[PromptTemplate]): Custom prompt template.
+
+        Returns:
+            List[str]: Extracted content strings for the batch.
+
+        Example:
+            >>> import asyncio
+            >>> result = asyncio.run(PDFParser(Settings())._process_batch([img], [1], Path("doc.pdf")))
+        """
         async with self.rate_limiter:
-            cached_pages, pages_to_process = await self._get_cached_pages(
-                images, page_nums, pdf_path
-            )
+            cached_pages, pages_to_process = await self._get_cached_pages(images, page_nums, pdf_path)
 
-            new_results = await self._process_uncached_pages(
-                pages_to_process, pdf_path, prompt_template
-            )
+            new_results = await self._process_uncached_pages(pages_to_process, pdf_path, prompt_template)
 
             # Combine and sort all results to original order
             all_results = cached_pages + new_results
@@ -189,15 +288,31 @@ class PDFParser(BaseParser):
 
     async def _get_cached_pages(
         self,
-        images: List[Image.Image],
-        page_nums: List[int],
+        images: list[Image.Image],
+        page_nums: list[int],
         pdf_path: Path,
-    ) -> Tuple[List[Tuple[int, str]], List[Tuple[int, Image.Image, int]]]:
-        """Return two lists: (cached_pages, pages_to_process)."""
-        cached_pages: List[Tuple[int, str]] = []
-        pages_to_process: List[Tuple[int, Image.Image, int]] = []
+    ) -> tuple[list[tuple[int, str]], list[tuple[int, Image.Image, int]]]:
+        """Retrieve cached pages and identify pages requiring extraction.
 
-        for i, (image, page_num) in enumerate(zip(images, page_nums)):
+        Args:
+            images (List[Image.Image]): Page images.
+            page_nums (List[int]): Page numbers for each image.
+            pdf_path (Path): Source PDF path.
+
+        Returns:
+            Tuple[
+                List[Tuple[int,str]],           # (index, cached_content)
+                List[Tuple[int,Image.Image,int]] # (index, image, page_num)
+            ]
+
+        Example:
+            >>> import asyncio
+            >>> cache, to_process = asyncio.run(PDFParser(Settings())._get_cached_pages(imgs, [1], Path("doc.pdf")))
+        """
+        cached_pages: list[tuple[int, str]] = []
+        pages_to_process: list[tuple[int, Image.Image, int]] = []
+
+        for i, (image, page_num) in enumerate(zip(images, page_nums, strict=False)):
             cache_key = f"{pdf_path.stem}_page_{page_num}"
             cached = await cache_get(self.cache, cache_key)
             if cached:
@@ -209,15 +324,28 @@ class PDFParser(BaseParser):
 
     async def _process_uncached_pages(
         self,
-        pages_to_process: List[Tuple[int, Image.Image, int]],
+        pages_to_process: list[tuple[int, Image.Image, int]],
         pdf_path: Path,
-        prompt_template: Optional["PromptTemplate"],
-    ) -> List[Tuple[int, str]]:
-        """Extract content for *pages_to_process* and update cache."""
+        prompt_template: PromptTemplate | None,
+    ) -> list[tuple[int, str]]:
+        """Extract text for uncached pages and update cache.
+
+        Args:
+            pages_to_process (List[Tuple[int,Image.Image,int]]): Pages to extract.
+            pdf_path (Path): PDF file path.
+            prompt_template (Optional[PromptTemplate]): Extraction prompt.
+
+        Returns:
+            List[Tuple[int,str]]: List of (index, content) tuples.
+
+        Example:
+            >>> import asyncio
+            >>> uncached = asyncio.run(PDFParser(Settings())._process_uncached_pages(to_process, Path("doc.pdf"), None))
+        """
         if not pages_to_process:
             return []
 
-        results: List[Tuple[int, str]] = []
+        results: list[tuple[int, str]] = []
 
         if len(pages_to_process) == 1:
             # Single page optimisation
@@ -239,7 +367,7 @@ class PDFParser(BaseParser):
         content = await self.extractor.extract(images, prompt_template)
 
         # TODO: If the extractor ever returns separate strings per page, split here.
-        for idx, page_num in zip(indices, page_numbers):
+        for _idx, page_num in zip(indices, page_numbers, strict=False):
             await cache_set(
                 self.cache,
                 f"{pdf_path.stem}_page_{page_num}",
@@ -249,20 +377,30 @@ class PDFParser(BaseParser):
 
         return results
 
-    def _combine_results(self, results: List[str]) -> str:
-        """Combine extracted results into final content."""
+    def _combine_results(self, results: list[str]) -> str:
+        """Clean and combine page extraction results into a single string.
+
+        Joins page texts with double newlines and removes duplicate blank lines.
+
+        Args:
+            results (List[str]): List of page text strings.
+
+        Returns:
+            str: Final combined content.
+
+        Example:
+            >>> combined = PDFParser(Settings())._combine_results(["text1", "", "text2"])
+        """
         # Join with double newlines
         combined = "\n\n".join(results)
 
         # Clean up any artifacts
         lines = combined.split("\n")
-        cleaned_lines: List[str] = []
+        cleaned_lines: list[str] = []
 
         for line in lines:
             # Skip empty lines at document boundaries
-            if not line.strip() and (
-                not cleaned_lines or not cleaned_lines[-1].strip()
-            ):
+            if not line.strip() and (not cleaned_lines or not cleaned_lines[-1].strip()):
                 continue
             cleaned_lines.append(line)
 
