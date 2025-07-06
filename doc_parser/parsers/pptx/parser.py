@@ -69,7 +69,7 @@ class PptxParser(BaseParser):
         super().__init__(config)
 
         # PPTX-specific configuration
-        pptx_cfg = config.get_parser_config("pptx")
+        pptx_cfg = config.parser_cfg("pptx")
         self.extract_images: bool = pptx_cfg.get("extract_images", True)
         self.extract_notes: bool = pptx_cfg.get("extract_notes", False)
         self.preserve_formatting: bool = pptx_cfg.get("preserve_formatting", True)

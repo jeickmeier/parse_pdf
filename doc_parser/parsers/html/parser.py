@@ -73,7 +73,7 @@ class HtmlParser(BaseParser):
         """Initialize HTML parser with configuration."""
         super().__init__(config)
 
-        html_cfg = config.get_parser_config("html")
+        html_cfg = config.parser_cfg("html")
         self.extract_sources: bool = html_cfg.get("extract_sources", True)
         self.follow_links: bool = html_cfg.get("follow_links", False)
         self.max_depth: int = html_cfg.get("max_depth", 1)

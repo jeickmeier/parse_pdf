@@ -62,7 +62,7 @@ class DocxParser(BaseStructuredParser):
         super().__init__(config)
 
         # Get DOCX-specific settings
-        docx_config = config.get_parser_config("docx")
+        docx_config = config.parser_cfg("docx")
         self.extract_images = docx_config.get("extract_images", True)
         self.extract_headers_footers = docx_config.get("extract_headers_footers", False)
         self.preserve_formatting = docx_config.get("preserve_formatting", True)

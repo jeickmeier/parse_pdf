@@ -60,7 +60,7 @@ class ExcelParser(BaseStructuredParser):
         super().__init__(config)
 
         # Get Excel-specific settings
-        excel_config = config.get_parser_config("excel")
+        excel_config = config.parser_cfg("excel")
         self.include_formulas = excel_config.get("include_formulas", False)
         self.include_formatting = excel_config.get("include_formatting", False)
         self.sheet_names = excel_config.get("sheet_names", None)  # None means all sheets

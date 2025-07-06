@@ -205,12 +205,8 @@ class BaseParser(ABC):
             result.errors.append("Post-processing failed")
 
     # ------------------------------------------------------------------
-    # Backwards-compat internal alias — remove once all modules migrated.
+    # Public convenience property for accessing settings via .config
     # ------------------------------------------------------------------
-    def _config_alias(self) -> AppConfig:
-        """Alias for *settings* (legacy)."""
-        return self.settings
-
     @property
     def config(self) -> AppConfig:
         """Alias property for settings (preferred)."""
@@ -249,13 +245,20 @@ class BaseParser(ABC):
 
     @classmethod
     def supported_extensions(cls) -> list[str]:
-        """Return list of supported extensions normalised by the registry.
+        """Return the list of file extensions associated with *cls*.
 
-        The attribute ``SUPPORTED_EXTENSIONS`` is attached automatically by
-        :pyfunc:`AppConfig.register`.  Subclasses can choose to override or
-        extend this method if they need custom logic.
+        The information is retrieved from the global :class:`AppConfig` parser
+        registry so that callers no longer rely on the legacy
+        ``SUPPORTED_EXTENSIONS`` class attribute.
         """
-        return getattr(cls, "SUPPORTED_EXTENSIONS", [])
+        # Runtime import to avoid import-time cycles
+        from doc_parser.config import AppConfig  # local import
+
+        # Identify all *parser names* that map to this class
+        parser_names = [name for name, p_cls in AppConfig._parsers.items() if p_cls is cls]
+
+        # Collect extensions whose registered parser matches any of the names
+        return [ext for ext, name in AppConfig._extensions.items() if name in parser_names]
 
     # ------------------------------------------------------------------
     # Path helpers (formerly utils.file_validators)

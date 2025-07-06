@@ -74,5 +74,4 @@ def test_settings_path_coercion(tmp_path):
 def test_settings_parser_cfg():
     overrides = {"excel": {"include_formulas": True}}
     settings = AppConfig(parser_settings=overrides)
-    assert settings.parser_cfg("excel") == overrides["excel"]
-    assert settings.get_parser_config("excel") == overrides["excel"] 
+    assert settings.parser_cfg("excel") == overrides["excel"] 

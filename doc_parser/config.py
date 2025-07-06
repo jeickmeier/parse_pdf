@@ -106,11 +106,6 @@ class AppConfig(BaseModel):
         """Return the configuration dictionary for *parser* *name*."""
         return self.parser_settings.get(name, {})
 
-    # Backwards-compatible wrapper for legacy code
-    def get_parser_config(self, name: str) -> dict[str, Any]:
-        """Alias pointing to :meth:`parser_cfg` (kept for transition period)."""
-        return self.parser_cfg(name)
-
     # ------------------------------------------------------------------
     # Parser-registry methods (class-level) - mirror old ``AppConfig`` API
     # ------------------------------------------------------------------
@@ -137,16 +132,12 @@ class AppConfig(BaseModel):
 
             cls._parsers[name] = parser_cls
 
-            normalized_exts: list[str] = []
             for raw_ext in extensions:
                 ext = raw_ext.lower()
                 if not ext.startswith("."):
                     ext = f".{ext}"
                 cls._extensions[ext] = name
-                normalized_exts.append(ext)
 
-            # Attach supported extensions attribute for convenience / tests
-            parser_cls.SUPPORTED_EXTENSIONS = normalized_exts  # type: ignore[attr-defined]
             return parser_cls
 
         return decorator

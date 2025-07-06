@@ -82,7 +82,7 @@ class PDFParser(BaseParser):
         super().__init__(config)
 
         # Get PDF-specific settings
-        pdf_config = config.get_parser_config("pdf")
+        pdf_config = config.parser_cfg("pdf")
         self.dpi = pdf_config.get("dpi", 300)
         self.batch_size = pdf_config.get("batch_size", config.batch_size)
 
