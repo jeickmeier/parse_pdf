@@ -281,3 +281,13 @@ class BaseExtractor(ABC):
     @abstractmethod
     def get_default_prompt(self) -> str:
         """Get the default prompt for this extractor."""
+
+
+# ------------------------------------------------------------------
+# Explicit re-export list for "from doc_parser.core.base import *" usage
+# ------------------------------------------------------------------
+__all__ = [
+    "BaseExtractor",
+    "BaseParser",
+    "ParseResult",
+]

@@ -310,3 +310,12 @@ class RateLimiter:  # pylint: disable=too-few-public-methods
     ) -> None:
         """Exit the context and release the internal semaphore."""
         await self._limiter.__aexit__(exc_type, exc_val, exc_tb)
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "AsyncBatcher",
+    "RateLimiter",
+]

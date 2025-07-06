@@ -192,3 +192,12 @@ class PromptRegistry:
             ['pdf_extraction', 'custom']
         """
         return list(cls._templates.keys())
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "PromptRegistry",
+    "PromptTemplate",
+]

@@ -195,3 +195,13 @@ async def cache_set(manager: "CacheManager", key: str, data: dict[str, _Any]) ->
         >>> await cache_set(cm, "test", {"foo": "bar"})
     """
     await manager.set(key, data)
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "CacheManager",
+    "cache_get",
+    "cache_set",
+]

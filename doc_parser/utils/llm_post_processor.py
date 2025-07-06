@@ -294,3 +294,11 @@ class LLMPostProcessor:
             raise ImportError("Invalid import path for response model")
         module = importlib.import_module(module_path)
         return getattr(module, attr)
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "LLMPostProcessor",
+]

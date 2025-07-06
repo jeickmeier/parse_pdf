@@ -89,7 +89,7 @@ def dataframe_to_markdown(df: pd.DataFrame) -> str:
     header_row = 0
     for i in range(min(5, len(df))):
         row = df.iloc[i]
-        if all(pd.notna(val) and str(val).strip() for val in row[:5]):
+        if all(pd.notna(cell_value) and str(cell_value).strip() for cell_value in row[:5]):
             header_row = i
             break
 
@@ -130,3 +130,12 @@ def _escape_cell(text: str) -> str:
         'a\\|b c'
     """
     return text.replace("|", "\\|").replace("\n", " ")
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "dataframe_to_markdown",
+    "rows_to_markdown",
+]

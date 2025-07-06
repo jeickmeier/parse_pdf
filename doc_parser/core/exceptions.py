@@ -75,3 +75,15 @@ class CacheError(ParserError):
       ...
     CacheError: Unable to write to cache directory
     """
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "CacheError",
+    "ConfigurationError",
+    "ExtractionError",
+    "ParserError",
+    "UnsupportedFormatError",
+]

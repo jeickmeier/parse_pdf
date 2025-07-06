@@ -122,3 +122,11 @@ class BaseStructuredParser(BaseParser, ABC):
         The default implementation returns an empty dict.
         """
         return {}
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "BaseStructuredParser",
+]

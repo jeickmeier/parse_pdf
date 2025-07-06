@@ -43,20 +43,15 @@ class PromptTemplate(BaseModel):
     def render(self, data: BaseModel | Mapping[str, Any] | None = None, **kwargs: Any) -> str:
         """Render the template after validating *data* with *input_schema*.
 
-        Parameters
-        ----------
-        data:
-            Either an *instance* of ``input_schema`` or a mapping that can be parsed
-            into the schema.  If *None*, an *empty* instance of the schema is created
-            (meaning all fields must declare defaults).
-        **kwargs:
-            Extra keyword-style overrides merged *after* the validated data.  Handy
-            for single-use substitutions.
+        Args:
+            data: Either an *instance* of ``input_schema`` or a mapping that can be
+                parsed into the schema. If *None*, an *empty* instance of the schema
+                is created (meaning all fields must declare defaults).
+            **kwargs: Extra keyword-style overrides merged *after* the validated
+                data. Handy for single-use substitutions.
 
         Returns:
-        -------
-        str
-            The rendered prompt ready to be sent to the LLM.
+            str: The rendered prompt ready to be sent to the LLM.
         """
         # Validate / coerce *data* into the declared schema.
         if data is None:
@@ -114,3 +109,11 @@ class PromptTemplate(BaseModel):
     def _serialise(self) -> dict[str, Any]:
         """Custom serialiser - only *template* is included in JSON output."""
         return {"template": self.template}
+
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "PromptTemplate",
+]

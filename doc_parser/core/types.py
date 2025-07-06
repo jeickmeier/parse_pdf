@@ -29,3 +29,10 @@ Examples:
 ...     from pathlib import Path
 ...     Path(output).write_text(content)
 """
+
+# ------------------------------------------------------------------
+# Public exports
+# ------------------------------------------------------------------
+__all__ = [
+    "PathLike",
+]
