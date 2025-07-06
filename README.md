@@ -48,8 +48,10 @@ settings = Settings(output_format="markdown", use_cache=False)
 # Instantiate parser based on file extension
 parser = ParserRegistry.from_path(Path("document.pdf"), settings)
 
-# Synchronous parse for scripts
-result = parser.parse_sync(Path("document.pdf"))
+# Async parse (Python 3.11+)
+import asyncio
+
+result = asyncio.run(parser.parse(Path("document.pdf")))
 print(result.content)
 ```
 

@@ -17,8 +17,9 @@ Examples:
 ...
 ...     async def validate_input(self, input_path: Path) -> bool:
 ...         return True
+>>> import asyncio
 >>> parser = DummyParser(settings)
->>> result = parser.parse_sync(Path("dummy.txt"))
+>>> result = asyncio.run(parser.parse(Path("dummy.txt")))
 >>> assert isinstance(result, ParseResult)
 >>> print(result.content)
 "dummy content"
@@ -27,7 +28,6 @@ Examples:
 from __future__ import annotations
 
 from abc import ABC, abstractmethod
-import asyncio
 from datetime import datetime
 import hashlib
 import json
@@ -231,14 +231,6 @@ class BaseParser(ABC):
             return await self.parse(input_path, **kwargs)
         finally:
             self.settings.output_format = original
-
-    # ------------------------------------------------------------------
-    # Synchronous convenience wrapper
-    # ------------------------------------------------------------------
-
-    def parse_sync(self, input_path: Path, **kwargs: Any) -> ParseResult:
-        """Blocking wrapper around :pyfunc:`parse` for scripting convenience."""
-        return asyncio.run(self.parse(input_path, **kwargs))
 
     # ------------------------------------------------------------------
     # Class-level helpers

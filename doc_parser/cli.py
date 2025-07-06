@@ -14,6 +14,7 @@ Examples:
 
 from __future__ import annotations
 
+import asyncio
 from pathlib import Path  # required at runtime
 from typing import Any, cast
 
@@ -136,8 +137,8 @@ def parse(
 
     parser = ParserRegistry.from_path(file, settings)
 
-    # Run synchronously for CLI ease
-    result = parser.parse_sync(file)
+    # Execute asynchronous parse via asyncio.run for CLI convenience
+    result = asyncio.run(parser.parse(file))
 
     if output:
         output.parent.mkdir(parents=True, exist_ok=True)

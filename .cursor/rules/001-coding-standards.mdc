@@ -37,6 +37,7 @@ apply all rules below.
 4. Use early returns to reduce nesting; minimise branching.
 5. Avoid wildcard imports; use absolute imports (`I` rules).
 6. Log with the standard `logging` module – no bare `print` statements (`T20`).
+7. Prefer pydantic v2 models over dataclasses
 
 ## 5. Testing considerations
 1. Public APIs **must** be covered by or extended with `pytest` tests under `tests/`.
