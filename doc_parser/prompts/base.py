@@ -17,9 +17,8 @@ Examples:
 
 import json
 from pathlib import Path
+import re
 from typing import Any, ClassVar
-
-from jinja2 import Template
 
 
 # pylint: disable=too-many-instance-attributes
@@ -54,7 +53,6 @@ class PromptTemplate:
             template_str: Jinja2 template string
             variables: Default template variables
         """
-        self.template: Template = Template(template_str)
         self._template_str: str = template_str
         self.variables: dict[str, Any] = variables or {}
 
@@ -68,7 +66,9 @@ class PromptTemplate:
             Rendered prompt string
         """
         context = {**self.variables, **kwargs}
-        return self.template.render(**context)
+        # Convert any Jinja2-style placeholders {{var}} to Python format {var}
+        fmt_str = re.sub(r"{{\s*(\w+)\s*}}", r"{\1}", self._template_str)
+        return fmt_str.format(**context)
 
     @classmethod
     def from_file(cls, template_path: Path, variables: dict[str, Any] | None = None) -> "PromptTemplate":
@@ -154,7 +154,7 @@ class PromptRegistry:
         if not cls._template_dir or not cls._template_dir.exists():
             return
 
-        for template_file in cls._template_dir.glob("*.j2"):
+        for template_file in cls._template_dir.glob("*.md"):
             name = template_file.stem
             cls._templates[name] = PromptTemplate.from_file(template_file)
 
