@@ -6,7 +6,6 @@ A modular, extensible document parsing library supporting multiple formats.
 
 __version__ = "0.1.0"
 
-from .core.config import ParserConfig
 from .core.registry import ParserRegistry
 from .core.base import BaseParser, ParseResult
 from .core.exceptions import ParserError, ConfigurationError
@@ -21,7 +20,6 @@ from .core.exceptions import ParserError, ConfigurationError
 from . import parsers as _builtin_parsers  # noqa: F401, E402 unused-import
 
 __all__ = [
-    "ParserConfig",
     "ParserRegistry",
     "BaseParser",
     "ParseResult",

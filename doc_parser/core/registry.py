@@ -3,7 +3,7 @@
 from pathlib import Path
 from typing import Dict, Type, List, Optional, Callable
 from .base import BaseParser
-from .config import ParserConfig
+from .settings import Settings
 from .exceptions import UnsupportedFormatError
 
 
@@ -48,15 +48,17 @@ class ParserRegistry:
         return decorator
 
     @classmethod
-    def get_parser(
-        cls, file_path: Path, config: Optional[ParserConfig] = None
+    def from_path(
+        cls,
+        file_path: "Path | str",
+        settings: Optional[Settings] = None,
     ) -> BaseParser:
         """
         Get appropriate parser for file.
 
         Args:
             file_path: Path to the file to parse
-            config: Optional parser configuration
+            settings: Optional settings object; if omitted a default instance is created
 
         Returns:
             Initialized parser instance
@@ -64,6 +66,28 @@ class ParserRegistry:
         Raises:
             UnsupportedFormatError: If no parser found for file type
         """
+        # ------------------------------------------------------------------
+        # Accept both Path objects and raw strings (e.g. URLs)
+        # ------------------------------------------------------------------
+        if isinstance(file_path, str):
+            # Treat raw URLs specially – they map to the HTML parser.
+            if file_path.startswith(("http://", "https://")):
+                parser_name = "html"
+                parser_class = cls._parsers.get(parser_name)
+                if parser_class is None:
+                    raise UnsupportedFormatError(
+                        "HTML parser is not registered. Cannot handle URL input."
+                    )
+
+                if settings is None:
+                    settings = Settings()
+
+                return parser_class(settings)
+
+            # Otherwise interpret *file_path* as a filesystem path string.
+            file_path = Path(file_path)
+
+        # At this point we guarantee *file_path* is a Path instance.
         ext = file_path.suffix.lower()
 
         if ext not in cls._extensions:
@@ -75,21 +99,23 @@ class ParserRegistry:
         parser_name = cls._extensions[ext]
         parser_class = cls._parsers[parser_name]
 
-        if config is None:
-            config = ParserConfig()
+        if settings is None:
+            settings = Settings()
 
-        return parser_class(config)
+        return parser_class(settings)
 
     @classmethod
     def get_parser_by_name(
-        cls, name: str, config: Optional[ParserConfig] = None
+        cls,
+        name: str,
+        settings: Optional[Settings] = None,
     ) -> BaseParser:
         """
         Get parser by name.
 
         Args:
             name: Parser name
-            config: Optional parser configuration
+            settings: Optional settings
 
         Returns:
             Initialized parser instance
@@ -102,10 +128,10 @@ class ParserRegistry:
                 f"Parser '{name}' not found. Available: {list(cls._parsers.keys())}"
             )
 
-        if config is None:
-            config = ParserConfig()
+        if settings is None:
+            settings = Settings()
 
-        return cls._parsers[name](config)
+        return cls._parsers[name](settings)
 
     @classmethod
     def list_parsers(cls) -> Dict[str, List[str]]:

@@ -73,6 +73,24 @@ async def parse_document():
 asyncio.run(parse_document())
 ```
 
+## Quick Start (v0.2)
+
+```python
+from doc_parser.core.registry import ParserRegistry
+from doc_parser.core.settings import Settings
+
+settings = Settings()
+parser = ParserRegistry.from_path("/path/to/doc.pdf", settings)
+result = parser.parse_sync("/path/to/doc.pdf")
+print(result.content[:500])
+```
+
+CLI usage:
+
+```bash
+$ doc-parser parse myfile.pdf --format markdown -o output.md
+```
+
 ## Configuration
 
 Create a configuration file (YAML or JSON):
@@ -101,7 +119,7 @@ parser_settings:
     extract_notes: false
     preserve_formatting: true
     slide_delimiter: "---"
-  perplexity:
+  html:
     extract_sources: true
     follow_links: false
 ```
@@ -356,3 +374,7 @@ Built on top of excellent libraries:
 - pandas & openpyxl for Excel handling
 - python-docx for Word documents
 - BeautifulSoup4 for web parsing
+
+## Post-Parse Prompting
+
+See `docs/post_processing.md` for details on running an additional LLM pass after the primary parse to transform or validate results.

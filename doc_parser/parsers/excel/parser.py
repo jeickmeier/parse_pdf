@@ -8,14 +8,16 @@ from openpyxl.utils import get_column_letter
 
 from ...core.base import BaseParser, ParseResult
 from ...core.registry import ParserRegistry
-from ...core.config import ParserConfig
+from ...core.settings import Settings
+from ...utils.file_validators import is_supported_file
+from ...utils.format_helpers import dataframe_to_markdown
 
 
 @ParserRegistry.register("excel", [".xlsx", ".xls", ".xlsm"])
 class ExcelParser(BaseParser):
     """Parser for Excel files."""
 
-    def __init__(self, config: ParserConfig):
+    def __init__(self, config: Settings):
         """Initialize Excel parser."""
         super().__init__(config)
 
@@ -29,10 +31,7 @@ class ExcelParser(BaseParser):
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate if the input file is a valid Excel file."""
-        if not input_path.exists():
-            return False
-
-        if input_path.suffix.lower() not in [".xlsx", ".xls", ".xlsm"]:
+        if not is_supported_file(input_path, [".xlsx", ".xls", ".xlsm"]):
             return False
 
         try:
@@ -42,7 +41,7 @@ class ExcelParser(BaseParser):
         except Exception:
             return False
 
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """
         Parse Excel document.
 
@@ -62,9 +61,9 @@ class ExcelParser(BaseParser):
 
         try:
             # Extract content based on format
-            if self.config.output_format == "markdown":
+            if self.settings.output_format == "markdown":
                 content = await self._extract_as_markdown(input_path, **kwargs)
-            elif self.config.output_format == "json":
+            elif self.settings.output_format == "json":
                 content = await self._extract_as_json(input_path, **kwargs)
             else:
                 content = await self._extract_as_markdown(input_path, **kwargs)
@@ -80,7 +79,7 @@ class ExcelParser(BaseParser):
             )
 
             return ParseResult(
-                content=content, metadata=metadata, format=self.config.output_format
+                content=content, metadata=metadata, format=self.settings.output_format
             )
 
         except Exception as e:
@@ -97,7 +96,9 @@ class ExcelParser(BaseParser):
 
         # Determine which sheets to process
         sheets_to_process: List[str] = self.sheet_names or excel_file.sheet_names  # type: ignore[assignment]
-        sheets_to_process = [s for s in sheets_to_process if s in excel_file.sheet_names]
+        sheets_to_process = [
+            s for s in sheets_to_process if s in excel_file.sheet_names
+        ]
 
         for sheet_name in sheets_to_process:
             # Add sheet header
@@ -134,7 +135,9 @@ class ExcelParser(BaseParser):
 
         # Determine which sheets to process
         sheets_to_process: List[str] = self.sheet_names or excel_file.sheet_names  # type: ignore[assignment]
-        sheets_to_process = [s for s in sheets_to_process if s in excel_file.sheet_names]
+        sheets_to_process = [
+            s for s in sheets_to_process if s in excel_file.sheet_names
+        ]
 
         for sheet_name in sheets_to_process:
             df = pd.read_excel(input_path, sheet_name=sheet_name)
@@ -157,50 +160,8 @@ class ExcelParser(BaseParser):
         return json.dumps(data, indent=2, default=str)
 
     def _dataframe_to_markdown(self, df: pd.DataFrame) -> str:
-        """Convert DataFrame to Markdown table."""
-        # Handle empty DataFrame
-        if df.empty:
-            return "*No data*"
-
-        # Find the first row that looks like headers
-        header_row = 0
-        for i in range(min(5, len(df))):
-            row = df.iloc[i]
-            if all(pd.notna(val) and str(val).strip() for val in row[:5]):
-                header_row = i
-                break
-
-        # Use the identified row as headers
-        if header_row > 0:
-            headers = df.iloc[header_row].astype(str).tolist()
-            data_df = df.iloc[header_row + 1 :].reset_index(drop=True)
-            data_df.columns = headers
-        else:
-            # Use default column names
-            data_df = df
-            headers = [f"Column {i + 1}" for i in range(len(df.columns))]
-            data_df.columns = headers
-
-        # Build markdown table
-        lines = []
-
-        # Header
-        lines.append("| " + " | ".join(headers) + " |")
-        lines.append("| " + " | ".join(["-" * max(8, len(h)) for h in headers]) + " |")
-
-        # Data rows
-        for _, row in data_df.iterrows():
-            row_values = []
-            for val in row:
-                if pd.isna(val):
-                    row_values.append("")
-                else:
-                    # Escape pipe characters
-                    str_val = str(val).replace("|", "\\|")
-                    row_values.append(str_val)
-            lines.append("| " + " | ".join(row_values) + " |")
-
-        return "\n".join(lines)
+        """Convert DataFrame to Markdown table using shared helper."""
+        return dataframe_to_markdown(df)
 
     async def _extract_formulas(
         self, input_path: Path, sheet_name: str

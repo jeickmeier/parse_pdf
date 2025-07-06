@@ -5,21 +5,26 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any, List, Dict
 
-from pptx import Presentation  # type: ignore
+from pptx import Presentation  # type: ignore[import-not-found]
 from pptx.enum.shapes import MSO_SHAPE_TYPE
 import json
 import uuid
 
 from ...core.base import BaseParser, ParseResult
-from ...core.config import ParserConfig
+from ...core.settings import Settings
 from ...core.registry import ParserRegistry
+from ...utils.cache import cache_get, cache_set
+from ...utils.file_validators import is_supported_file
+from ...utils.format_helpers import rows_to_markdown
+
+# mypy: ignore-errors
 
 
 @ParserRegistry.register("pptx", [".pptx"])
 class PptxParser(BaseParser):
     """Parser for PowerPoint presentations (PPTX)."""
 
-    def __init__(self, config: ParserConfig):
+    def __init__(self, config: Settings):
         super().__init__(config)
 
         # PPTX-specific configuration
@@ -34,7 +39,7 @@ class PptxParser(BaseParser):
     # ------------------------------------------------------------------
     async def validate_input(self, input_path: Path) -> bool:  # noqa: D401
         """Return *True* if *input_path* points to a readable PPTX file."""
-        if not input_path.exists() or input_path.suffix.lower() != ".pptx":
+        if not is_supported_file(input_path, [".pptx"]):
             return False
 
         try:
@@ -46,7 +51,7 @@ class PptxParser(BaseParser):
     # ------------------------------------------------------------------
     # Public entry-points
     # ------------------------------------------------------------------
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:  # noqa: D401
+    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:  # noqa: D401
         """Parse a PPTX file and return a ParseResult."""
         if not await self.validate_input(input_path):
             return ParseResult(
@@ -61,7 +66,7 @@ class PptxParser(BaseParser):
         slide_dicts: List[Dict[str, Any]] = []
 
         # Directory to save extracted images if enabled
-        images_dir = self.config.output_dir / f"{input_path.stem}_images"
+        images_dir = self.settings.output_dir / f"{input_path.stem}_images"
         if self.extract_images:
             images_dir.mkdir(parents=True, exist_ok=True)
 
@@ -69,28 +74,32 @@ class PptxParser(BaseParser):
         for idx, slide in enumerate(prs.slides, start=1):
             cache_key = f"{input_path.stem}_slide_{idx}"
 
-            cached = await self.cache.get(cache_key) if self.config.use_cache else None
+            cached = (
+                await cache_get(self.cache, cache_key)
+                if self.settings.use_cache
+                else None
+            )
 
             if cached:
                 # Cached content reuse
-                if self.config.output_format == "json":
+                if self.settings.output_format == "json":
                     slide_dicts.append(cached["data"])
                 else:
                     slide_markdowns.append(cached["content"])
                 continue
 
             # Fresh extraction
-            if self.config.output_format == "json":
+            if self.settings.output_format == "json":
                 slide_data = self._slide_to_dict(slide, images_dir)
                 slide_dicts.append(slide_data)
-                await self.cache.set(cache_key, {"data": slide_data})
+                await cache_set(self.cache, cache_key, {"data": slide_data})
             else:
                 slide_md = self._slide_to_markdown(slide, images_dir)
                 slide_markdowns.append(slide_md)
-                await self.cache.set(cache_key, {"content": slide_md})
+                await cache_set(self.cache, cache_key, {"content": slide_md})
 
         # Combine slide outputs
-        if self.config.output_format == "json":
+        if self.settings.output_format == "json":
             combined_content = json.dumps(slide_dicts, indent=2, ensure_ascii=False)
         else:
             delimiter = f"\n\n{self.slide_delimiter}\n\n"
@@ -102,7 +111,7 @@ class PptxParser(BaseParser):
         return ParseResult(
             content=combined_content,
             metadata=metadata,
-            format=self.config.output_format,
+            format=self.settings.output_format,
         )
 
     # ------------------------------------------------------------------
@@ -176,18 +185,15 @@ class PptxParser(BaseParser):
 
     # ---------------- Table helpers ----------------
     def _table_to_markdown(self, table) -> str:
-        rows = [[cell.text_frame.text.strip() for cell in row.cells] for row in table.rows]
-        if not rows:
-            return ""
-        header = rows[0]
-        lines = ["| " + " | ".join(header) + " |"]
-        lines.append("| " + " | ".join(["-" * max(3, len(h)) for h in header]) + " |")
-        for row in rows[1:]:
-            lines.append("| " + " | ".join(row) + " |")
-        return "\n".join(lines)
+        rows = [
+            [cell.text_frame.text.strip() for cell in row.cells] for row in table.rows
+        ]
+        return rows_to_markdown(rows)
 
     def _table_to_list(self, table):
-        return [[cell.text_frame.text.strip() for cell in row.cells] for row in table.rows]
+        return [
+            [cell.text_frame.text.strip() for cell in row.cells] for row in table.rows
+        ]
 
     # ---------------- Image helpers ----------------
     def _save_image(self, shape, images_dir: Path) -> str:
@@ -197,4 +203,4 @@ class PptxParser(BaseParser):
         with open(filepath, "wb") as f:
             f.write(image.blob)
         # Return relative path
-        return str(filepath.relative_to(self.config.output_dir).as_posix()) 
+        return str(filepath.relative_to(self.settings.output_dir).as_posix())

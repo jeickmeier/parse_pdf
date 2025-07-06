@@ -10,14 +10,16 @@ from typing import Any, Iterable, Union, Dict, List
 
 from ...core.base import BaseParser, ParseResult
 from ...core.registry import ParserRegistry
-from ...core.config import ParserConfig
+from ...core.settings import Settings
+from ...utils.file_validators import is_supported_file
+from ...utils.format_helpers import rows_to_markdown
 
 
 @ParserRegistry.register("docx", [".docx"])
 class DocxParser(BaseParser):
     """Parser for Word documents."""
 
-    def __init__(self, config: ParserConfig):
+    def __init__(self, config: Settings):
         """Initialize DOCX parser."""
         super().__init__(config)
 
@@ -29,10 +31,7 @@ class DocxParser(BaseParser):
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate if the input file is a valid DOCX file."""
-        if not input_path.exists():
-            return False
-
-        if input_path.suffix.lower() != ".docx":
+        if not is_supported_file(input_path, [".docx"]):
             return False
 
         try:
@@ -42,7 +41,7 @@ class DocxParser(BaseParser):
         except Exception:
             return False
 
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """
         Parse DOCX document.
 
@@ -64,9 +63,9 @@ class DocxParser(BaseParser):
             doc = docx.Document(str(input_path))
 
             # Extract content based on format
-            if self.config.output_format == "markdown":
+            if self.settings.output_format == "markdown":
                 content = await self._extract_as_markdown(doc, input_path)
-            elif self.config.output_format == "json":
+            elif self.settings.output_format == "json":
                 content = await self._extract_as_json(doc, input_path)
             else:
                 content = await self._extract_as_markdown(doc, input_path)
@@ -88,7 +87,7 @@ class DocxParser(BaseParser):
                 metadata["author"] = doc.core_properties.author
 
             return ParseResult(
-                content=content, metadata=metadata, format=self.config.output_format
+                content=content, metadata=metadata, format=self.settings.output_format
             )
 
         except Exception as e:
@@ -243,30 +242,8 @@ class DocxParser(BaseParser):
 
     def _table_to_markdown(self, table: Table) -> str:
         """Convert a table to Markdown."""
-        if not table.rows:
-            return ""
-
-        lines = []
-
-        # Process header row
-        header_cells = []
-        for cell in table.rows[0].cells:
-            header_cells.append(cell.text.strip().replace("|", "\\|"))
-
-        lines.append("| " + " | ".join(header_cells) + " |")
-        lines.append(
-            "| " + " | ".join(["-" * max(8, len(h)) for h in header_cells]) + " |"
-        )
-
-        # Process data rows
-        for row in table.rows[1:]:
-            row_cells = []
-            for cell in row.cells:
-                cell_text = cell.text.strip().replace("|", "\\|").replace("\n", " ")
-                row_cells.append(cell_text)
-            lines.append("| " + " | ".join(row_cells) + " |")
-
-        return "\n".join(lines)
+        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
+        return rows_to_markdown(rows)
 
     def _extract_headers_footers(self, doc: Document) -> str:
         """Extract headers and footers from document."""

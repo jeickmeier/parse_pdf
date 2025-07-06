@@ -1,7 +1,8 @@
 from pathlib import Path
+from ..core.types import PathLike
 
 
-def save_markdown(content: str, output_path: Path) -> None:
+def save_markdown(content: str, output_path: PathLike) -> None:
     """Save *content* to *output_path* in Markdown format.
 
     The function ensures that the parent directory exists and writes the file
@@ -14,4 +15,4 @@ def save_markdown(content: str, output_path: Path) -> None:
     output_path = Path(output_path)
     output_path.parent.mkdir(parents=True, exist_ok=True)
     with open(output_path, "w", encoding="utf-8") as f:
-        f.write(content) 
+        f.write(content)

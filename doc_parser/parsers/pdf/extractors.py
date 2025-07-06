@@ -2,28 +2,26 @@
 
 import base64
 from io import BytesIO
-from typing import Any, Optional, List, Union
+from typing import Any, List, Union, Optional
 from PIL import Image
-from openai import AsyncOpenAI
+from agents import Agent, Runner
+import asyncio
 
 from ...core.base import BaseExtractor
 from ...prompts.base import PromptTemplate
-from ...utils.async_helpers import run_with_retry
 
 
 class VisionExtractor(BaseExtractor):
     """Extract content from images using vision models."""
 
-    def __init__(self, model_name: str = "gpt-4o-mini", api_key: Optional[str] = None):
-        """
-        Initialize vision extractor.
+    def __init__(self, model_name: str = "gpt-4o-mini"):
+        """Initialize the vision extractor.
 
-        Args:
-            model_name: Vision model to use
-            api_key: OpenAI API key
+        All lower-level OpenAI interaction is delegated to the openai-agents SDK; it
+        will pick up `OPENAI_API_KEY` from the environment or whichever global client
+        the host application has configured.
         """
         self.model_name = model_name
-        self.client = AsyncOpenAI(api_key=api_key)
 
     async def extract(
         self, content: Any, prompt_template: Optional[PromptTemplate] = None
@@ -54,12 +52,8 @@ class VisionExtractor(BaseExtractor):
         image.save(buffered, format="PNG")
         image_base64 = base64.b64encode(buffered.getvalue()).decode()
 
-        # Call vision API with retry
-        response = await run_with_retry(
-            self._call_vision_api, prompt, image_base64, max_retries=3
-        )
-
-        return str(response.choices[0].message.content)
+        # Directly call the vision model through the Agents SDK
+        return await self._call_vision_api(prompt, image_base64)
 
     async def _extract_batch(
         self,
@@ -67,60 +61,40 @@ class VisionExtractor(BaseExtractor):
         prompt_template: Optional[PromptTemplate] = None,
     ) -> str:
         """Extract from batch of images."""
-        prompt = self._get_prompt(prompt_template)
+        # Simply fan-out to `_extract_single` for each page and join the results.
+        tasks = [self._extract_single(img, prompt_template) for img in images]
+        results: List[str] = await asyncio.gather(*tasks)
+        return "\n\n".join(results)
 
-        # Convert images to base64
-        image_contents = []
-        for image in images:
-            buffered = BytesIO()
-            image.save(buffered, format="PNG")
-            image_base64 = base64.b64encode(buffered.getvalue()).decode()
-            image_contents.append(
-                {
-                    "type": "image_url",
-                    "image_url": {"url": f"data:image/png;base64,{image_base64}"},
-                }
-            )
+    async def _call_vision_api(self, prompt: str, image_base64: str) -> str:
+        """Call OpenAI vision API."""
+        # Use the Agents SDK to run an ad-hoc Agent that performs the extraction.
+        agent = Agent(
+            name="VisionExtractor",
+            instructions=(
+                "You are a vision model that extracts text from images following the"
+                " provided instructions. Respond with *only* the extracted markdown "
+                "content—no additional commentary."
+            ),
+            model=self.model_name,
+        )
 
-        # Build messages
         messages = [
             {
                 "role": "user",
-                "content": [{"type": "text", "text": prompt}, *image_contents],
+                "content": [
+                    {"type": "input_text", "text": prompt},
+                    {
+                        "type": "input_image",
+                        "image_url": f"data:image/png;base64,{image_base64}",
+                        "detail": "low",
+                    },
+                ],
             }
         ]
 
-        # Call API
-        response = await run_with_retry(
-            self.client.chat.completions.create,
-            model=self.model_name,
-            messages=messages,
-            max_tokens=4096,
-            max_retries=3,
-        )
-
-        return str(response.choices[0].message.content)
-
-    async def _call_vision_api(self, prompt: str, image_base64: str) -> Any:
-        """Call OpenAI vision API."""
-        return await self.client.chat.completions.create(
-            model=self.model_name,
-            messages=[
-                {
-                    "role": "user",
-                    "content": [
-                        {"type": "text", "text": prompt},
-                        {
-                            "type": "image_url",
-                            "image_url": {
-                                "url": f"data:image/png;base64,{image_base64}"
-                            },
-                        },
-                    ],
-                }
-            ],
-            max_tokens=4096,
-        )
+        result = await Runner.run(agent, messages)  # type: ignore[arg-type]
+        return str(result.final_output)
 
     def get_default_prompt(self) -> str:
         """Return the default prompt for PDF extraction.

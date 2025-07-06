@@ -1,20 +1,7 @@
 """Async utility functions and classes."""
 
 import asyncio
-from collections import deque
-from typing import (
-    Any,
-    Awaitable,
-    Callable,
-    Deque,
-    Dict,
-    List,
-    Optional,
-    Tuple,
-    TypeVar,
-)
-
-T = TypeVar("T")
+from typing import Any, Awaitable, Callable, Optional, List
 
 
 class RateLimiter:
@@ -40,78 +27,6 @@ class RateLimiter:
         exc_tb: Optional[object],
     ) -> None:
         self.semaphore.release()
-
-
-class AsyncBatcher:
-    """Batch async operations for efficiency."""
-
-    def __init__(
-        self,
-        batch_size: int,
-        process_func: Callable[[List[T]], Awaitable[List[Any]]],
-        timeout: float = 1.0,
-    ) -> None:
-        """
-        Initialize async batcher.
-
-        Args:
-            batch_size: Maximum items per batch
-            process_func: Async function to process batches
-            timeout: Maximum time to wait before processing partial batch
-        """
-        self.batch_size = batch_size
-        self.process_func = process_func
-        self.timeout = timeout
-        self._queue: Deque[Tuple[int, Any, asyncio.Future[Any]]] = deque()
-        self._results: Dict[int, Any] = {}
-        self._lock = asyncio.Lock()
-        self._task: Optional[asyncio.Task[Any]] = None
-
-    async def add(self, item: T) -> Any:
-        """Add item to batch and get result."""
-        item_id = id(item)
-        future: asyncio.Future[Any] = asyncio.Future()
-
-        async with self._lock:
-            self._queue.append((item_id, item, future))
-
-            if self._task is None or self._task.done():
-                self._task = asyncio.create_task(self._process_batches())
-
-        return await future
-
-    async def _process_batches(self) -> None:
-        """Process queued items in batches."""
-        while self._queue:
-            batch: List[Any] = []
-            futures = []
-
-            async with self._lock:
-                # Collect batch
-                while self._queue and len(batch) < self.batch_size:
-                    item_id, item, future = self._queue.popleft()
-                    batch.append(item)
-                    futures.append((item_id, future))
-
-            if batch:
-                try:
-                    # Process batch
-                    results = await self.process_func(batch)
-
-                    # Distribute results
-                    for i, (item_id, future) in enumerate(futures):
-                        if i < len(results):
-                            future.set_result(results[i])
-                        else:
-                            future.set_exception(Exception("No result for item"))
-
-                except Exception as e:
-                    # Set exception for all futures in batch
-                    for _, future in futures:
-                        future.set_exception(e)
-
-            # Small delay to allow more items to queue
-            await asyncio.sleep(0.01)
 
 
 async def run_with_retry(

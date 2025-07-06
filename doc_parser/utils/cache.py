@@ -3,7 +3,7 @@
 import json
 import asyncio
 from pathlib import Path
-from typing import Any, Optional, Dict, cast
+from typing import Any, Optional, Dict, cast, Dict as _Dict, Any as _Any
 import aiofiles
 from datetime import datetime, timedelta
 
@@ -119,3 +119,20 @@ class CacheManager:
         for path in self.cache_dir.glob("*.json"):
             total += path.stat().st_size
         return total
+
+
+# ---------------------------------------------------------------------------
+# Lightweight functional helpers – preferred over calling ``CacheManager``
+# methods directly from client code.  They keep call-sites concise and decouple
+# them from the underlying implementation should we swap backends in the future.
+# ---------------------------------------------------------------------------
+
+
+async def cache_get(manager: "CacheManager", key: str) -> Optional[Dict[str, Any]]:  # noqa: D401
+    """Return cached data for *key* using *manager* (or ``None``)."""
+    return await manager.get(key)
+
+
+async def cache_set(manager: "CacheManager", key: str, data: _Dict[str, _Any]) -> None:  # noqa: D401
+    """Persist *data* in *manager* under *key*."""
+    await manager.set(key, data)

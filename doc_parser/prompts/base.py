@@ -10,7 +10,9 @@ import json
 class PromptTemplate:
     """Customizable prompt templates using Jinja2."""
 
-    def __init__(self, template_str: str, variables: Optional[Dict[str, Any]] = None) -> None:
+    def __init__(
+        self, template_str: str, variables: Optional[Dict[str, Any]] = None
+    ) -> None:
         """
         Initialize prompt template.
 

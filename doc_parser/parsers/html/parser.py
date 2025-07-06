@@ -14,14 +14,14 @@ from bs4.element import Tag
 
 from ...core.base import BaseParser, ParseResult
 from ...core.registry import ParserRegistry
-from ...core.config import ParserConfig
+from ...core.settings import Settings
 
 
 @ParserRegistry.register("html", [".html", ".htm", ".pplx", ".url", ".webloc"])
 class HtmlParser(BaseParser):
     """Parser for HTML pages, Perplexity exports, and generic web content."""
 
-    def __init__(self, config: ParserConfig):
+    def __init__(self, config: Settings):
         super().__init__(config)
 
         html_cfg = config.get_parser_config("html")
@@ -34,6 +34,29 @@ class HtmlParser(BaseParser):
         self.h2t.ignore_links = False
         self.h2t.ignore_images = False
         self.h2t.body_width = 0
+
+    # ------------------------------------------------------------------
+    # Public high-level entry-point override to support URL strings
+    # ------------------------------------------------------------------
+    async def parse(self, input_path: "Path | str", **kwargs: Any):  # type: ignore[override]
+        """Extended to support direct URL strings in *input_path*.
+
+        If *input_path* is a string starting with ``http://`` or ``https://`` we treat
+        it as a remote URL and route the request to :pyfunc:`parse_url`, bypassing
+        the file-based caching logic in :class:`BaseParser`.  For filesystem paths
+        we fall back to the default implementation which retains full caching.
+        """
+        # Handle URL strings directly
+        if isinstance(input_path, str) and input_path.startswith(("http://", "https://")):
+            return await self.parse_url(input_path, **kwargs)
+
+        # Otherwise use the base implementation (expects Path)
+        from pathlib import Path as _Path
+
+        if isinstance(input_path, str):
+            input_path = _Path(input_path)
+
+        return await super().parse(input_path, **kwargs)
 
     # ---------------------------------------------------------------------
     # Validation helpers
@@ -59,9 +82,13 @@ class HtmlParser(BaseParser):
     # ------------------------------------------------------------------
     # Public entry-points
     # ------------------------------------------------------------------
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
         if not await self.validate_input(input_path):
-            return ParseResult("", self.get_metadata(input_path), errors=["Invalid URL file"])
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=["Invalid URL file"],
+            )
         url = await self._extract_url(input_path)
         return await self.parse_url(url, **kwargs)
 
@@ -69,7 +96,7 @@ class HtmlParser(BaseParser):
         """Parse an arbitrary URL and return a ParseResult."""
         try:
             content_data = await self._fetch_and_parse(url)
-            if self.config.output_format == "json":
+            if self.settings.output_format == "json":
                 import json as _json
 
                 content_str = _json.dumps(content_data, indent=2, ensure_ascii=False)
@@ -83,9 +110,13 @@ class HtmlParser(BaseParser):
                 "domain": urlparse(url).netloc,
                 "content_type": content_data.get("content_type", ""),
             }
-            return ParseResult(content_str, metadata, self.config.output_format)
+            return ParseResult(
+                content=content_str,
+                metadata=metadata,
+                format=self.settings.output_format,
+            )
         except Exception as exc:  # pragma: no cover
-            return ParseResult("", {"url": url}, errors=[str(exc)])
+            return ParseResult(content="", metadata={"url": url}, errors=[str(exc)])
 
     # ------------------------------------------------------------------
     # Internal helpers
@@ -115,7 +146,9 @@ class HtmlParser(BaseParser):
 
     async def _fetch_and_parse(self, url: str) -> Dict[str, Any]:
         async with aiohttp.ClientSession() as session:
-            async with session.get(url, timeout=aiohttp.ClientTimeout(total=30)) as resp:
+            async with session.get(
+                url, timeout=aiohttp.ClientTimeout(total=30)
+            ) as resp:
                 resp.raise_for_status()
                 content_type = resp.headers.get("Content-Type", "")
                 html_content = await resp.text()
@@ -130,33 +163,50 @@ class HtmlParser(BaseParser):
         else:
             data = await self._parse_general_page(soup, url)
 
-        data.update({
-            "title": title,
-            "description": description,
-            "content_type": content_type,
-            "is_perplexity": is_perplexity,
-        })
+        data.update(
+            {
+                "title": title,
+                "description": description,
+                "content_type": content_type,
+                "is_perplexity": is_perplexity,
+            }
+        )
         return data
 
     # ---------------- specific page handlers ----------------------------
-    async def _parse_perplexity_page(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
-        data: Dict[str, Any] = {"query": "", "answer": "", "sources": [], "related_questions": []}
+    async def _parse_perplexity_page(
+        self, soup: BeautifulSoup, url: str
+    ) -> Dict[str, Any]:
+        data: Dict[str, Any] = {
+            "query": "",
+            "answer": "",
+            "sources": [],
+            "related_questions": [],
+        }
 
-        query_elem = soup.find(["h1", "div"], class_=re.compile(r"query|question", re.I))
+        query_elem = soup.find(
+            ["h1", "div"], class_=re.compile(r"query|question", re.I)
+        )
         if query_elem:
             data["query"] = query_elem.get_text(strip=True)
 
-        answer_elem = soup.find(["div", "section"], class_=re.compile(r"answer|response|content", re.I))
+        answer_elem = soup.find(
+            ["div", "section"], class_=re.compile(r"answer|response|content", re.I)
+        )
         if answer_elem:
             data["answer"] = self.h2t.handle(str(answer_elem))
         else:
-            main_content = soup.find(["main", "article", "div"], class_=re.compile(r"main|content", re.I))
+            main_content = soup.find(
+                ["main", "article", "div"], class_=re.compile(r"main|content", re.I)
+            )
             if main_content:
                 data["answer"] = self.h2t.handle(str(main_content))
 
         if self.extract_sources:
             sources: List[Dict[str, str]] = []
-            for elem in soup.find_all(["a", "div"], class_=re.compile(r"source|reference|citation", re.I)):
+            for elem in soup.find_all(
+                ["a", "div"], class_=re.compile(r"source|reference|citation", re.I)
+            ):
                 if not isinstance(elem, Tag):
                     continue
                 href = str(elem.get("href", ""))
@@ -164,13 +214,17 @@ class HtmlParser(BaseParser):
                     sources.append({"url": href, "title": elem.get_text(strip=True)})
             data["sources"] = sources
 
-        for elem in soup.find_all(["div", "li"], class_=re.compile(r"related|suggestion", re.I)):
+        for elem in soup.find_all(
+            ["div", "li"], class_=re.compile(r"related|suggestion", re.I)
+        ):
             txt = elem.get_text(strip=True)
             if txt and len(txt) > 10:
                 data["related_questions"].append(txt)
         return data
 
-    async def _parse_general_page(self, soup: BeautifulSoup, url: str) -> Dict[str, Any]:
+    async def _parse_general_page(
+        self, soup: BeautifulSoup, url: str
+    ) -> Dict[str, Any]:
         data: Dict[str, Any] = {"content": "", "links": [], "images": []}
 
         for script in soup(["script", "style"]):
@@ -200,7 +254,9 @@ class HtmlParser(BaseParser):
         for img in main_content.find_all("img", src=True):
             if not isinstance(img, Tag):
                 continue
-            images.append({"src": str(img.get("src", "")), "alt": str(img.get("alt", ""))})
+            images.append(
+                {"src": str(img.get("src", "")), "alt": str(img.get("alt", ""))}
+            )
         data["images"] = images[:10]
         return data
 
@@ -256,4 +312,4 @@ class HtmlParser(BaseParser):
         og_desc = soup.find("meta", property="og:description")
         if isinstance(og_desc, Tag) and og_desc.get("content"):
             return str(og_desc.get("content"))
-        return "" 
+        return ""

@@ -9,7 +9,8 @@ so we opt out of strict mypy checking to avoid polluting CI results.
 
 import asyncio
 from pathlib import Path
-from doc_parser import ParserConfig, ParserRegistry
+from doc_parser.core.settings import Settings
+from doc_parser.core.registry import ParserRegistry
 from doc_parser import parsers  # noqa: F401
 from doc_parser.utils import save_markdown
 
@@ -19,18 +20,26 @@ async def example_basic_usage():
     print("=== Basic PDF Parsing ===")
 
     # Create configuration
-    config = ParserConfig(
-        max_workers=10, model_name="gpt-4.1-mini", output_format="markdown"
+    config = Settings(
+        max_workers=10, 
+        model_name="gpt-4.1-mini", 
+        output_format="markdown",
+        parser_settings={
+            "pdf": {
+                "dpi": 300,
+                "batch_size": 1
+            }
+        }
     )
 
     # Parse a PDF file (using the existing hello.py as test)
     pdf_path = Path(
-        "/Users/joneickmeier/Documents/Papers Library/JFDS-2025-Varlashova-jfds.2025.1.191.pdf"
+        "/Users/joneickmeier/Documents/Papers Library/Monteggia-The best way forward-2014-Nature.pdf"
     )
     if pdf_path.exists():
         try:
-            parser = ParserRegistry.get_parser_by_name("pdf", config)
-            result = await parser.parse(pdf_path, prompt_template="pdf_extraction")
+            parser = ParserRegistry.from_path(pdf_path, config)
+            result = await parser.parse(pdf_path)
 
             print(f"Parsed {pdf_path.name}:")
             print(f"Content length: {len(result.content)} characters")
@@ -53,16 +62,18 @@ async def example_html_usage():
     print("=== HTML (Web URL) Parsing ===")
 
     # Create configuration
-    config = ParserConfig(
-        max_workers=10, model_name="gpt-4.1-mini", output_format="markdown"
+    config = Settings(
+        max_workers=10, 
+        model_name="gpt-4.1-mini", 
+        output_format="markdown"
     )
 
     url = "https://www.theglobeandmail.com/"
 
     try:
-        parser = ParserRegistry.get_parser_by_name("html", config)
+        parser = ParserRegistry.from_path(url, config)
         # Directly parse the URL without creating any temporary files
-        result = await parser.parse_url(url)
+        result = await parser.parse(url)
 
         print(f"Parsed {url}:")
         print(f"Content length: {len(result.content)} characters")

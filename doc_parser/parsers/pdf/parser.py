@@ -10,9 +10,11 @@ from tqdm.asyncio import tqdm
 
 from ...core.base import BaseParser, ParseResult
 from ...core.registry import ParserRegistry
-from ...core.config import ParserConfig
+from ...core.settings import Settings
 from ...utils.async_helpers import RateLimiter
+from ...utils.cache import cache_get, cache_set
 from .extractors import VisionExtractor
+from ...utils.file_validators import is_supported_file
 
 if TYPE_CHECKING:
     from ...prompts.base import PromptTemplate
@@ -22,7 +24,7 @@ if TYPE_CHECKING:
 class PDFParser(BaseParser):
     """Enhanced PDF parser with modular design."""
 
-    def __init__(self, config: ParserConfig):
+    def __init__(self, config: Settings):
         """
         Initialize PDF parser.
 
@@ -37,19 +39,14 @@ class PDFParser(BaseParser):
         self.batch_size = pdf_config.get("batch_size", config.batch_size)
 
         # Initialize extractor
-        self.extractor = VisionExtractor(
-            model_name=config.model_name, api_key=config.api_key
-        )
+        self.extractor = VisionExtractor(model_name=config.model_name)
 
         # Rate limiter for API calls
         self.rate_limiter = RateLimiter(config.max_workers)
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate if the input file is a valid PDF."""
-        if not input_path.exists():
-            return False
-
-        if input_path.suffix.lower() != ".pdf":
+        if not is_supported_file(input_path, [".pdf"]):
             return False
 
         # Check if file is readable and not empty
@@ -60,7 +57,7 @@ class PDFParser(BaseParser):
         except Exception:
             return False
 
-    async def parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
+    async def _parse(self, input_path: Path, **kwargs: Any) -> ParseResult:
         """
         Parse PDF document.
 
@@ -98,12 +95,12 @@ class PDFParser(BaseParser):
             {
                 "pages": len(images),
                 "dpi": self.dpi,
-                "model": self.config.model_name,
+                "model": self.settings.model_name,
             }
         )
 
         return ParseResult(
-            content=content, metadata=metadata, format=self.config.output_format
+            content=content, metadata=metadata, format=self.settings.output_format
         )
 
     async def _pdf_to_images(
@@ -168,65 +165,89 @@ class PDFParser(BaseParser):
         pdf_path: Path,
         prompt_template: Optional["PromptTemplate"] = None,
     ) -> List[str]:
-        """Process a batch of images."""
-        results = []
+        """Process a batch of pages (images) asynchronously, leveraging cache."""
 
         async with self.rate_limiter:
-            # Check cache for each page
-            cached_pages = []
-            pages_to_process = []
+            cached_pages, pages_to_process = await self._get_cached_pages(
+                images, page_nums, pdf_path
+            )
 
-            for i, (image, page_num) in enumerate(zip(images, page_nums)):
-                cache_key = f"{pdf_path.stem}_page_{page_num}"
-                cached = await self.cache.get(cache_key)
+            new_results = await self._process_uncached_pages(
+                pages_to_process, pdf_path, prompt_template
+            )
 
-                if cached:
-                    cached_pages.append((i, cached["content"]))
-                else:
-                    pages_to_process.append((i, image, page_num))
+            # Combine and sort all results to original order
+            all_results = cached_pages + new_results
+            all_results.sort(key=lambda tpl: tpl[0])  # sort by original index
 
-            # Process uncached pages
-            if pages_to_process:
-                if len(pages_to_process) == 1:
-                    # Single page
-                    i, image, page_num = pages_to_process[0]
-                    content = await self.extractor.extract(image, prompt_template)
+            # Return only the extracted content
+            return [content for _, content in all_results]
 
-                    # Cache result
-                    await self.cache.set(
-                        f"{pdf_path.stem}_page_{page_num}",
-                        {"content": content, "page": page_num},
-                    )
+    # ------------------------------------------------------------------
+    # Helper split-out methods to simplify _process_batch logic
+    # ------------------------------------------------------------------
 
-                    results.append((i, content))
-                else:
-                    # Multiple pages
-                    indices = [p[0] for p in pages_to_process]
-                    images_to_process = [p[1] for p in pages_to_process]
-                    page_numbers = [p[2] for p in pages_to_process]
+    async def _get_cached_pages(
+        self,
+        images: List[Image.Image],
+        page_nums: List[int],
+        pdf_path: Path,
+    ) -> Tuple[List[Tuple[int, str]], List[Tuple[int, Image.Image, int]]]:
+        """Return two lists: (cached_pages, pages_to_process)."""
+        cached_pages: List[Tuple[int, str]] = []
+        pages_to_process: List[Tuple[int, Image.Image, int]] = []
 
-                    content = await self.extractor.extract(
-                        images_to_process, prompt_template
-                    )
+        for i, (image, page_num) in enumerate(zip(images, page_nums)):
+            cache_key = f"{pdf_path.stem}_page_{page_num}"
+            cached = await cache_get(self.cache, cache_key)
+            if cached:
+                cached_pages.append((i, cached["content"]))
+            else:
+                pages_to_process.append((i, image, page_num))
 
-                    # Split content by some delimiter if needed
-                    # For now, treat as single result
-                    for idx, page_num in zip(indices, page_numbers):
-                        # Cache each page
-                        await self.cache.set(
-                            f"{pdf_path.stem}_page_{page_num}",
-                            {"content": content, "page": page_num},
-                        )
+        return cached_pages, pages_to_process
 
-                    results.append((indices[0], content))
+    async def _process_uncached_pages(
+        self,
+        pages_to_process: List[Tuple[int, Image.Image, int]],
+        pdf_path: Path,
+        prompt_template: Optional["PromptTemplate"],
+    ) -> List[Tuple[int, str]]:
+        """Extract content for *pages_to_process* and update cache."""
+        if not pages_to_process:
+            return []
 
-            # Add cached results
-            results.extend(cached_pages)
+        results: List[Tuple[int, str]] = []
 
-            # Sort by original index
-            results.sort(key=lambda x: x[0])
+        if len(pages_to_process) == 1:
+            # Single page optimisation
+            idx, image, page_num = pages_to_process[0]
+            content = await self.extractor.extract(image, prompt_template)
+            await cache_set(
+                self.cache,
+                f"{pdf_path.stem}_page_{page_num}",
+                {"content": content, "page": page_num},
+            )
+            results.append((idx, content))
+            return results
 
-            return [content for _, content in results]
+        # Multiple pages: batch extract
+        indices = [tpl[0] for tpl in pages_to_process]
+        images = [tpl[1] for tpl in pages_to_process]
+        page_numbers = [tpl[2] for tpl in pages_to_process]
+
+        content = await self.extractor.extract(images, prompt_template)
+
+        # TODO: If the extractor ever returns separate strings per page, split here.
+        for idx, page_num in zip(indices, page_numbers):
+            await cache_set(
+                self.cache,
+                f"{pdf_path.stem}_page_{page_num}",
+                {"content": content, "page": page_num},
+            )
+        results.append((indices[0], content))
+
+        return results
 
     def _combine_results(self, results: List[str]) -> str:
         """Combine extracted results into final content."""
