@@ -77,10 +77,11 @@ class HtmlParser(BaseParser):
         """Initialize HTML parser with configuration."""
         super().__init__(config)
 
-        html_cfg = config.parser_cfg("html")
-        self.extract_sources: bool = html_cfg.get("extract_sources", True)
-        self.follow_links: bool = html_cfg.get("follow_links", False)
-        self.max_depth: int = html_cfg.get("max_depth", 1)
+        html_cfg = config.parsers.html
+
+        self.extract_sources = html_cfg.extract_sources if html_cfg.extract_sources is not None else True
+        self.follow_links = html_cfg.follow_links if html_cfg.follow_links is not None else False
+        self.max_depth = html_cfg.max_depth if html_cfg.max_depth is not None else 1
 
         # HTML→Markdown converter
         self.h2t = html2text.HTML2Text()

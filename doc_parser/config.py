@@ -32,11 +32,33 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel, Field, field_validator
 
 from doc_parser.core.exceptions import UnsupportedFormatError
+from doc_parser.options import DocxOptions, ExcelOptions, HtmlOptions, PdfOptions, PptxOptions
 
 if TYPE_CHECKING:  # pragma: no cover - avoid runtime import cycles
     from collections.abc import Callable
 
     from doc_parser.core.base import BaseParser
+
+# ---------------------------------------------------------------------------
+# Nested parser-options container - must be defined *before* AppConfig
+# so that it can be referenced within the AppConfig class body.
+# ---------------------------------------------------------------------------
+
+
+class ParserConfig(BaseModel):
+    """Typed container holding per-parser option models (Pydantic v2)."""
+
+    pdf: PdfOptions = Field(default_factory=PdfOptions)
+    html: HtmlOptions = Field(default_factory=HtmlOptions)
+    docx: DocxOptions = Field(default_factory=DocxOptions)
+    excel: ExcelOptions = Field(default_factory=ExcelOptions)
+    pptx: PptxOptions = Field(default_factory=PptxOptions)
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "extra": "forbid",
+    }
 
 # ---------------------------------------------------------------------------
 # AppConfig model
@@ -77,7 +99,7 @@ class AppConfig(BaseModel):
     # ------------------------------------------------------------------
     # Parser-specific overrides & post-processing
     # ------------------------------------------------------------------
-    parser_settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    parsers: ParserConfig = Field(default_factory=ParserConfig, alias="parser_settings")
 
     post_prompt: str | None = None
     response_model: str | None = None  # dotted import path to Pydantic model
@@ -98,13 +120,6 @@ class AppConfig(BaseModel):
         path = Path(value)
         path.mkdir(parents=True, exist_ok=True)
         return path
-
-    # ------------------------------------------------------------------
-    # Convenience helpers
-    # ------------------------------------------------------------------
-    def parser_cfg(self, name: str) -> dict[str, Any]:
-        """Return the configuration dictionary for *parser* *name*."""
-        return self.parser_settings.get(name, {})
 
     # ------------------------------------------------------------------
     # Parser-registry methods (class-level) - mirror old ``AppConfig`` API

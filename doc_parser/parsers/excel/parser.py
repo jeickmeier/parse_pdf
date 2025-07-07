@@ -64,11 +64,16 @@ class ExcelParser(DataFrameMarkdownMixin, BaseParser):
         """Initialize Excel parser."""
         super().__init__(config)
 
-        # Get Excel-specific settings
-        excel_config = config.parser_cfg("excel")
-        self.include_formulas = excel_config.get("include_formulas", False)
-        self.include_formatting = excel_config.get("include_formatting", False)
-        self.sheet_names = excel_config.get("sheet_names", None)  # None means all sheets
+        # Get Excel-specific settings (typed model)
+        excel_cfg = config.parsers.excel
+
+        self.include_formulas = (
+            excel_cfg.include_formulas if excel_cfg.include_formulas is not None else False
+        )
+        self.include_formatting = (
+            excel_cfg.include_formatting if excel_cfg.include_formatting is not None else False
+        )
+        self.sheet_names = excel_cfg.sheet_names  # None implies all sheets
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate whether the input path points to a readable Excel file.

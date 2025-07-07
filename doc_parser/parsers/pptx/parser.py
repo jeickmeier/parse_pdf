@@ -73,11 +73,14 @@ class PptxParser(TableMarkdownMixin, BaseParser):
         super().__init__(config)
 
         # PPTX-specific configuration
-        pptx_cfg = config.parser_cfg("pptx")
-        self.extract_images: bool = pptx_cfg.get("extract_images", True)
-        self.extract_notes: bool = pptx_cfg.get("extract_notes", False)
-        self.preserve_formatting: bool = pptx_cfg.get("preserve_formatting", True)
-        self.slide_delimiter: str = pptx_cfg.get("slide_delimiter", "---")
+        pptx_cfg = config.parsers.pptx
+
+        self.extract_images = pptx_cfg.extract_images if pptx_cfg.extract_images is not None else True
+        self.extract_notes = pptx_cfg.extract_notes if pptx_cfg.extract_notes is not None else False
+        self.preserve_formatting = (
+            pptx_cfg.preserve_formatting if pptx_cfg.preserve_formatting is not None else True
+        )
+        self.slide_delimiter = pptx_cfg.slide_delimiter or "---"
 
     # ------------------------------------------------------------------
     # Validation helpers

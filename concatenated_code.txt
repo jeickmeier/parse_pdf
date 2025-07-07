@@ -17,6 +17,7 @@ __version__ = "0.1.0"
 # module first.
 # ---------------------------------------------------------------------------
 from doc_parser.config import AppConfig
+from doc_parser.utils import logging_config  # noqa: F401  triggers auto-logging init
 
 from . import parsers as _builtin_parsers  # noqa: F401 unused-import
 from .core.base import BaseParser, ParseResult
@@ -268,11 +269,33 @@ from typing import TYPE_CHECKING, Any, ClassVar
 from pydantic import BaseModel, Field, field_validator
 
 from doc_parser.core.exceptions import UnsupportedFormatError
+from doc_parser.options import DocxOptions, ExcelOptions, HtmlOptions, PdfOptions, PptxOptions
 
 if TYPE_CHECKING:  # pragma: no cover - avoid runtime import cycles
     from collections.abc import Callable
 
     from doc_parser.core.base import BaseParser
+
+# ---------------------------------------------------------------------------
+# Nested parser-options container - must be defined *before* AppConfig
+# so that it can be referenced within the AppConfig class body.
+# ---------------------------------------------------------------------------
+
+
+class ParserConfig(BaseModel):
+    """Typed container holding per-parser option models (Pydantic v2)."""
+
+    pdf: PdfOptions = Field(default_factory=PdfOptions)
+    html: HtmlOptions = Field(default_factory=HtmlOptions)
+    docx: DocxOptions = Field(default_factory=DocxOptions)
+    excel: ExcelOptions = Field(default_factory=ExcelOptions)
+    pptx: PptxOptions = Field(default_factory=PptxOptions)
+
+    model_config = {
+        "populate_by_name": True,
+        "arbitrary_types_allowed": True,
+        "extra": "forbid",
+    }
 
 # ---------------------------------------------------------------------------
 # AppConfig model
@@ -313,7 +336,7 @@ class AppConfig(BaseModel):
     # ------------------------------------------------------------------
     # Parser-specific overrides & post-processing
     # ------------------------------------------------------------------
-    parser_settings: dict[str, dict[str, Any]] = Field(default_factory=dict)
+    parsers: ParserConfig = Field(default_factory=ParserConfig, alias="parser_settings")
 
     post_prompt: str | None = None
     response_model: str | None = None  # dotted import path to Pydantic model
@@ -334,13 +357,6 @@ class AppConfig(BaseModel):
         path = Path(value)
         path.mkdir(parents=True, exist_ok=True)
         return path
-
-    # ------------------------------------------------------------------
-    # Convenience helpers
-    # ------------------------------------------------------------------
-    def parser_cfg(self, name: str) -> dict[str, Any]:
-        """Return the configuration dictionary for *parser* *name*."""
-        return self.parser_settings.get(name, {})
 
     # ------------------------------------------------------------------
     # Parser-registry methods (class-level) - mirror old ``AppConfig`` API
@@ -514,10 +530,12 @@ from abc import ABC, abstractmethod
 from datetime import datetime
 import hashlib
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 
 from pydantic import BaseModel, Field
 
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.utils.cache import cache_get, cache_set
 
 if TYPE_CHECKING:
@@ -698,8 +716,10 @@ class BaseParser(ABC):
 
             return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
 
-        except Exception as exc:  # pylint: disable=broad-except  # noqa: BLE001
-            # Gracefully convert unexpected exception into a ParseResult so callers don't crash
+        except EXPECTED_EXCEPTIONS as exc:
+            # Gracefully handle *expected* errors; unexpected ones propagate.
+            logger = logging.getLogger(__name__)
+            logger.debug("Expected error while parsing %s: %s", input_path, exc, exc_info=True)
             return ParseResult(
                 content="",
                 metadata=self.get_metadata(input_path),
@@ -762,8 +782,6 @@ class BaseParser(ABC):
 
     async def _run_post_processing(self, result: ParseResult) -> None:
         """Helper to perform post-processing and attach to *result*."""
-        import logging
-
         logger = logging.getLogger(__name__)
         try:
             from doc_parser.utils.llm_post_processor import LLMPostProcessor
@@ -773,8 +791,8 @@ class BaseParser(ABC):
             prompt_arg: str = self.settings.post_prompt or ""
             result.post_content = await post_processor.process(result.content, prompt_arg)
             logger.debug("Post-processing complete. Length=%s", len(str(result.post_content)))
-        except Exception:  # pylint: disable=broad-except
-            logger.exception("Post-processing failed")
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Post-processing failed with expected error: %s", exc, exc_info=True)
             result.errors.append("Post-processing failed")
 
     # ------------------------------------------------------------------
@@ -866,6 +884,111 @@ __all__ = [
     "BaseExtractor",
     "BaseParser",
     "ParseResult",
+]
+
+
+
+================================================================================
+File: doc_parser/core/error_policy.py
+================================================================================
+
+"""Centralised error-handling policy for the doc_parser library.
+
+This module declares *expected* exceptions for each major subsystem so that
+parsers can catch only those and let unexpected errors propagate (fail-fast).
+
+The constants are grouped per domain to encourage targeted ``except`` blocks:
+
+* IO-related errors       -> ``EXPECTED_IO_ERRORS``
+* Value / type errors     -> ``EXPECTED_VALUE_ERRORS``
+* Network / HTTP errors   -> ``EXPECTED_NETWORK_ERRORS``
+* PDF-specific errors     -> ``EXPECTED_PDF_ERRORS``
+* All combined            -> ``EXPECTED_EXCEPTIONS``
+
+Downstream code should import the narrowest applicable group, e.g.::
+
+    from doc_parser.core.error_policy import EXPECTED_IO_ERRORS
+
+    try:
+        with open(path) as fh:
+            ...
+    except EXPECTED_IO_ERRORS as exc:
+        logger.debug("Failed to read %s: %s", path, exc)
+        raise
+
+Rationale
+---------
+Catching *only* well-understood exceptions prevents accidentally hiding real
+bugs and helps surface stack traces early in development.  For example, a
+``KeyError`` from a dict lookup is likely unintended and should bubble up
+instead of being swallowed by a broad ``except Exception`` handler.
+
+The grouping approach avoids sprinkling third-party library imports (e.g.
+``aiohttp``) throughout the codebase.  Consumers simply reference the tuple
+without caring how it was constructed.
+"""
+
+from __future__ import annotations
+
+# ---------------------------------------------------------------------------
+# IO / filesystem related errors
+# ---------------------------------------------------------------------------
+EXPECTED_IO_ERRORS: tuple[type[Exception], ...] = (
+    FileNotFoundError,
+    IsADirectoryError,
+    PermissionError,
+    OSError,  # includes low-level IO errors
+)
+
+# ---------------------------------------------------------------------------
+# Value / type validation errors
+# ---------------------------------------------------------------------------
+EXPECTED_VALUE_ERRORS: tuple[type[Exception], ...] = (ValueError,)
+
+# ---------------------------------------------------------------------------
+# Network / HTTP related errors - optional import of *aiohttp*
+# ---------------------------------------------------------------------------
+try:
+    import aiohttp
+
+    EXPECTED_NETWORK_ERRORS: tuple[type[Exception], ...] = (aiohttp.ClientError,)
+except ModuleNotFoundError:  # pragma: no cover - aiohttp optional
+    EXPECTED_NETWORK_ERRORS = ()
+
+# ---------------------------------------------------------------------------
+# PDF-specific errors from *pdf2image* (import is optional)
+# ---------------------------------------------------------------------------
+try:
+    from pdf2image.exceptions import (
+        PDFInfoNotInstalledError,
+        PDFPageCountError,
+        PDFSyntaxError,
+    )
+
+    EXPECTED_PDF_ERRORS: tuple[type[Exception], ...] = (
+        PDFInfoNotInstalledError,
+        PDFPageCountError,
+        PDFSyntaxError,
+    )
+except ModuleNotFoundError:  # pragma: no cover - pdf2image optional
+    EXPECTED_PDF_ERRORS = ()
+
+# ---------------------------------------------------------------------------
+# Aggregate - use when a component deals with multiple subsystems
+# ---------------------------------------------------------------------------
+EXPECTED_EXCEPTIONS: tuple[type[Exception], ...] = (
+    *EXPECTED_IO_ERRORS,
+    *EXPECTED_VALUE_ERRORS,
+    *EXPECTED_NETWORK_ERRORS,
+    *EXPECTED_PDF_ERRORS,
+)
+
+__all__: list[str] = [
+    "EXPECTED_EXCEPTIONS",
+    "EXPECTED_IO_ERRORS",
+    "EXPECTED_NETWORK_ERRORS",
+    "EXPECTED_PDF_ERRORS",
+    "EXPECTED_VALUE_ERRORS",
 ]
 
 
@@ -1022,9 +1145,13 @@ miscellaneous options into ``BaseParser.parse``.  Each parser now receives a
 strongly-typed options object, improving validation and static type-checking.
 """
 
+# -----------------------------------------------------------------------------
+# Imports
+# -----------------------------------------------------------------------------
+
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, validator  # Pydantic v1 compatible
+from pydantic import BaseModel, Field, field_validator
 
 # Standard library
 
@@ -1035,14 +1162,16 @@ from pydantic import BaseModel, Field, validator  # Pydantic v1 compatible
 PageRange = tuple[int, int]
 
 
-class _BaseOptions(BaseModel):  # pylint: disable=too-few-public-methods
-    """Common ancestor to allow isinstance checks across option objects."""
+class _BaseOptions(BaseModel):
+    """Common ancestor for all strongly-typed parser option models."""
 
-    class Config:  # pylint: disable=too-few-public-methods
-        arbitrary_types_allowed = True
-        allow_population_by_field_name = True
-        validate_assignment = True
-        extra = "forbid"  # Disallow unexpected kwargs to catch typos early.
+    # ``model_config`` replaces the legacy *Config* inner-class in Pydantic v2.
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,
+        "validate_assignment": True,
+        "extra": "forbid",  # Disallow unexpected kwargs to catch typos early.
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -1063,8 +1192,10 @@ class PdfOptions(_BaseOptions):
     )
 
     # Ensure correct ordering of the tuple and positive indices
-    @validator("page_range")
-    def _validate_page_range(cls, v: PageRange | None) -> PageRange | None:  # noqa: N805
+    @field_validator("page_range")
+    @classmethod
+    def _validate_page_range(cls, v: PageRange | None) -> PageRange | None:
+        """Ensure *(start, end)* tuple is positive, ordered and 1-based."""
         if v is None:
             return v
         start, end = v
@@ -1073,6 +1204,19 @@ class PdfOptions(_BaseOptions):
         if start > end:
             raise ValueError("page_range start must be <= end")
         return v
+
+    # ---------------- permanent configuration settings ----------------
+    dpi: int | None = Field(
+        default=None,
+        description="Image resolution (dots-per-inch) used when rasterising PDF pages.",
+        ge=72,
+        le=600,
+    )
+    batch_size: int | None = Field(
+        default=None,
+        description="Number of pages to process per extraction batch; falls back to global *batch_size* if *None*.",
+        ge=1,
+    )
 
 
 class HtmlOptions(_BaseOptions):
@@ -1084,7 +1228,7 @@ class HtmlOptions(_BaseOptions):
     )
     follow_links: bool | None = Field(
         default=None,
-        description="If *True*, the parser will crawl linked pages up to\n        *max_depth*.",
+        description="If *True*, the parser will crawl linked pages up to *max_depth*.",
     )
     max_depth: int | None = Field(
         default=None,
@@ -1092,20 +1236,26 @@ class HtmlOptions(_BaseOptions):
         description="Maximum recursion depth when *follow_links* is *True*.",
     )
 
+    # Provide sensible defaults if not explicitly overridden.
+    model_config = {
+        **_BaseOptions.model_config,
+        "validate_default": True,
+    }
+
 
 class DocxOptions(_BaseOptions):
     """Run-time options specific to the DOCX parser."""
 
-    extract_images: bool | None = Field(default=None)
-    extract_headers_footers: bool | None = Field(default=None)
-    preserve_formatting: bool | None = Field(default=None)
+    extract_images: bool | None = Field(default=None, description="If False, embedded images are ignored.")
+    extract_headers_footers: bool | None = Field(default=None, description="Include header/footer text in output.")
+    preserve_formatting: bool | None = Field(default=None, description="Preserve inline formatting such as bold/italic.")
 
 
 class ExcelOptions(_BaseOptions):
     """Run-time options specific to the Excel parser."""
 
-    include_formulas: bool | None = Field(default=None)
-    include_formatting: bool | None = Field(default=None)
+    include_formulas: bool | None = Field(default=None, description="Include cell formulas in the output.")
+    include_formatting: bool | None = Field(default=None, description="Include cell formatting metadata.")
     sheet_names: list[str] | None = Field(
         default=None,
         description="Subset of sheet names to parse; *None* parses all sheets.",
@@ -1115,10 +1265,10 @@ class ExcelOptions(_BaseOptions):
 class PptxOptions(_BaseOptions):
     """Run-time options specific to the PPTX parser."""
 
-    extract_images: bool | None = Field(default=None)
-    extract_notes: bool | None = Field(default=None)
-    preserve_formatting: bool | None = Field(default=None)
-    slide_delimiter: str | None = Field(default=None)
+    extract_images: bool | None = Field(default=None, description="Extract slide images where possible.")
+    extract_notes: bool | None = Field(default=None, description="Extract speaker notes for each slide.")
+    preserve_formatting: bool | None = Field(default=None, description="Preserve basic formatting codes.")
+    slide_delimiter: str | None = Field(default=None, description="Delimiter inserted between slides in Markdown output.")
 
 
 # ----------------------------------------------------------------------------
@@ -1133,6 +1283,15 @@ __all__ = [
     "PdfOptions",
     "PptxOptions",
 ]
+
+# -----------------------------------------------------------------------------
+# Notes
+# -----------------------------------------------------------------------------
+
+# This module originally depended on *Pydantic v1*'s ``validator`` API.  The
+# code-base has since migrated to *Pydantic v2*, replacing the old decorators
+# with :pyfunc:`pydantic.field_validator` and adopting the ``model_config``
+# style for class configuration.
 
 
 
@@ -1196,14 +1355,14 @@ from docx.text.paragraph import Paragraph
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser
-from doc_parser.utils.format_helpers import rows_to_markdown
+from doc_parser.utils.mixins import TableMarkdownMixin
 
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic import BaseModel
 
 
 @AppConfig.register("docx", [".docx"])
-class DocxParser(BaseParser):
+class DocxParser(TableMarkdownMixin, BaseParser):
     """Parser for Microsoft Word documents (.docx).
 
     Provides methods to validate, parse, and extract content in Markdown or JSON formats.
@@ -1231,11 +1390,16 @@ class DocxParser(BaseParser):
         """Initialize DOCX parser."""
         super().__init__(config)
 
-        # Get DOCX-specific settings
-        docx_config = config.parser_cfg("docx")
-        self.extract_images = docx_config.get("extract_images", True)
-        self.extract_headers_footers = docx_config.get("extract_headers_footers", False)
-        self.preserve_formatting = docx_config.get("preserve_formatting", True)
+        # Get DOCX-specific settings (typed model)
+        docx_cfg = config.parsers.docx
+
+        self.extract_images = docx_cfg.extract_images if docx_cfg.extract_images is not None else True
+        self.extract_headers_footers = (
+            docx_cfg.extract_headers_footers if docx_cfg.extract_headers_footers is not None else False
+        )
+        self.preserve_formatting = (
+            docx_cfg.preserve_formatting if docx_cfg.preserve_formatting is not None else True
+        )
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate whether the input path points to a valid DOCX file.
@@ -1465,11 +1629,6 @@ class DocxParser(BaseParser):
 
         return text
 
-    def _table_to_markdown(self, table: Table) -> str:
-        """Convert a table to Markdown."""
-        rows = [[cell.text.strip() for cell in row.cells] for row in table.rows]
-        return rows_to_markdown(rows)
-
     def _extract_headers_footers(self, doc: Document) -> str:
         """Extract headers and footers from document."""
         content = []
@@ -1488,9 +1647,6 @@ class DocxParser(BaseParser):
                     content.append(f"**Footer:** {footer_text}")
 
         return "\n".join(content)
-
-    def _has_supported_extension(self, input_path: Path) -> bool:
-        return super()._has_supported_extension(input_path)
 
 
 
@@ -1527,6 +1683,7 @@ Examples:
 >>> assert "sheets" in result.metadata
 """
 
+import logging
 from pathlib import Path
 from typing import TYPE_CHECKING, Any
 
@@ -1537,14 +1694,15 @@ import pandas as pd
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser
-from doc_parser.utils.format_helpers import dataframe_to_markdown
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
+from doc_parser.utils.mixins import DataFrameMarkdownMixin
 
 if TYPE_CHECKING:  # pragma: no cover
     from pydantic import BaseModel
 
 
 @AppConfig.register("excel", [".xlsx", ".xls", ".xlsm"])
-class ExcelParser(BaseParser):
+class ExcelParser(DataFrameMarkdownMixin, BaseParser):
     """Parser for Excel files (.xlsx, .xls, .xlsm).
 
     Args:
@@ -1574,11 +1732,16 @@ class ExcelParser(BaseParser):
         """Initialize Excel parser."""
         super().__init__(config)
 
-        # Get Excel-specific settings
-        excel_config = config.parser_cfg("excel")
-        self.include_formulas = excel_config.get("include_formulas", False)
-        self.include_formatting = excel_config.get("include_formatting", False)
-        self.sheet_names = excel_config.get("sheet_names", None)  # None means all sheets
+        # Get Excel-specific settings (typed model)
+        excel_cfg = config.parsers.excel
+
+        self.include_formulas = (
+            excel_cfg.include_formulas if excel_cfg.include_formulas is not None else False
+        )
+        self.include_formatting = (
+            excel_cfg.include_formatting if excel_cfg.include_formatting is not None else False
+        )
+        self.sheet_names = excel_cfg.sheet_names  # None implies all sheets
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate whether the input path points to a readable Excel file.
@@ -1616,13 +1779,15 @@ class ExcelParser(BaseParser):
 
     def _extra_metadata(self, input_path: Any) -> dict[str, Any]:
         """Return sheet names and count for quick metadata lookup."""
+        logger = logging.getLogger(__name__)
         try:
             excel_file = pd.ExcelFile(input_path)
             return {
                 "sheets": excel_file.sheet_names,
                 "sheet_count": len(excel_file.sheet_names),
             }
-        except Exception:  # pylint: disable=broad-except  # noqa: BLE001
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Expected error reading Excel metadata for %s: %s", input_path, exc, exc_info=True)
             return {}
 
     async def _extract_as_markdown(self, document_obj: Path) -> str:
@@ -1728,24 +1893,6 @@ class ExcelParser(BaseParser):
 
         return json.dumps(data, indent=2, default=str)
 
-    def _dataframe_to_markdown(self, df: pd.DataFrame) -> str:
-        """Convert a pandas DataFrame to a GitHub-flavored Markdown table.
-
-        Args:
-            df (pd.DataFrame): DataFrame to convert.
-
-        Returns:
-            str: Markdown table as string.
-
-        Example:
-            >>> import pandas as pd
-            >>> from doc_parser.parsers.excel.parser import ExcelParser
-            >>> df = pd.DataFrame([[1, 2], [3, 4]])
-            >>> md = ExcelParser(Settings())._dataframe_to_markdown(df)
-            >>> assert "|" in md
-        """
-        return dataframe_to_markdown(df)
-
     async def _extract_formulas(self, input_path: Path, sheet_name: str) -> dict[str, str]:
         """Extract cell formulas from a specific sheet of an Excel file.
 
@@ -1825,6 +1972,7 @@ Examples:
 
 from __future__ import annotations
 
+import logging
 import plistlib
 import re
 from typing import TYPE_CHECKING, Any
@@ -1837,6 +1985,7 @@ import html2text
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -1877,10 +2026,11 @@ class HtmlParser(BaseParser):
         """Initialize HTML parser with configuration."""
         super().__init__(config)
 
-        html_cfg = config.parser_cfg("html")
-        self.extract_sources: bool = html_cfg.get("extract_sources", True)
-        self.follow_links: bool = html_cfg.get("follow_links", False)
-        self.max_depth: int = html_cfg.get("max_depth", 1)
+        html_cfg = config.parsers.html
+
+        self.extract_sources = html_cfg.extract_sources if html_cfg.extract_sources is not None else True
+        self.follow_links = html_cfg.follow_links if html_cfg.follow_links is not None else False
+        self.max_depth = html_cfg.max_depth if html_cfg.max_depth is not None else 1
 
         # HTML→Markdown converter
         self.h2t = html2text.HTML2Text()
@@ -2008,6 +2158,7 @@ class HtmlParser(BaseParser):
             >>> result = asyncio.run(parser.parse_url("http://example.com"))
             >>> print(result.metadata["domain"])
         """
+        logger = logging.getLogger(__name__)
         try:
             content_data = await self._fetch_and_parse(url)
             effective_format = output_format or self.settings.output_format
@@ -2031,7 +2182,8 @@ class HtmlParser(BaseParser):
                 metadata=metadata,
                 output_format=effective_format,
             )
-        except (TimeoutError, aiohttp.ClientError, ValueError) as exc:  # pragma: no cover
+        except EXPECTED_EXCEPTIONS as exc:  # pragma: no cover
+            logger.debug("Expected error while fetching URL %s: %s", url, exc, exc_info=True)
             return ParseResult(content="", metadata={"url": url}, errors=[str(exc)])
 
     # ------------------------------------------------------------------
@@ -2345,6 +2497,7 @@ Examples:
 import asyncio
 import base64
 from io import BytesIO
+import logging
 from pathlib import Path
 from typing import Any
 
@@ -2352,6 +2505,7 @@ from agents import Agent, Runner
 from PIL import Image
 
 from doc_parser.core.base import BaseExtractor
+from doc_parser.core.error_policy import EXPECTED_NETWORK_ERRORS
 from doc_parser.prompts import PromptTemplate
 
 
@@ -2425,7 +2579,12 @@ class VisionExtractor(BaseExtractor):
         image_base64 = base64.b64encode(buffered.getvalue()).decode()
 
         # Directly call the vision model through the Agents SDK
-        return await self._call_vision_api(prompt, image_base64)
+        logger = logging.getLogger(__name__)
+        try:
+            return await self._call_vision_api(prompt, image_base64)
+        except EXPECTED_NETWORK_ERRORS as exc:
+            logger.debug("Vision API call failed with expected network error: %s", exc, exc_info=True)
+            raise
 
     async def _extract_batch(
         self,
@@ -2490,8 +2649,13 @@ class VisionExtractor(BaseExtractor):
             }
         ]
 
-        result = await Runner.run(agent, messages)  # type: ignore[arg-type]
-        return str(result.final_output)
+        logger = logging.getLogger(__name__)
+        try:
+            result = await Runner.run(agent, messages)  # type: ignore[arg-type]
+            return str(result.final_output)
+        except EXPECTED_NETWORK_ERRORS as exc:
+            logger.debug("Vision API call failed with expected network error: %s", exc, exc_info=True)
+            raise
 
     def get_default_prompt(self) -> str:
         """Return the bundled default prompt for PDF vision extraction.
@@ -2562,6 +2726,7 @@ Example:
 from __future__ import annotations
 
 import asyncio
+import logging
 from typing import TYPE_CHECKING, cast
 
 from pdf2image import convert_from_path
@@ -2569,6 +2734,7 @@ from tqdm.asyncio import tqdm
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.options import PdfOptions
 from doc_parser.utils.async_batcher import RateLimiter
 from doc_parser.utils.cache import cache_get, cache_set
@@ -2620,9 +2786,9 @@ class PDFParser(BaseParser):
         super().__init__(config)
 
         # Get PDF-specific settings
-        pdf_config = config.parser_cfg("pdf")
-        self.dpi = pdf_config.get("dpi", 300)
-        self.batch_size = pdf_config.get("batch_size", config.batch_size)
+        pdf_cfg = config.parsers.pdf
+        self.dpi = pdf_cfg.dpi if pdf_cfg.dpi is not None else 300
+        self.batch_size = pdf_cfg.batch_size if pdf_cfg.batch_size is not None else config.batch_size
 
         # Initialize extractor
         self.extractor = VisionExtractor(model_name=config.model_name)
@@ -2697,24 +2863,34 @@ class PDFParser(BaseParser):
         page_range = pdf_opts.page_range
         prompt_template = pdf_opts.prompt_template
 
-        # Convert PDF to images
-        images = await self._pdf_to_images(input_path, page_range)
+        logger = logging.getLogger(__name__)
+        try:
+            # Convert PDF to images
+            images = await self._pdf_to_images(input_path, page_range)
 
-        # Process pages
-        results = await self._process_pages(images, input_path, cast("_PromptTemplate | None", prompt_template))
+            # Process pages
+            results = await self._process_pages(images, input_path, cast("_PromptTemplate | None", prompt_template))
 
-        # Combine results
-        content = self._combine_results(results)
+            # Combine results
+            content = self._combine_results(results)
 
-        # Build metadata
-        metadata = self.get_metadata(input_path)
-        metadata.update({
-            "pages": len(images),
-            "dpi": self.dpi,
-            "model": self.settings.model_name,
-        })
+            # Build metadata
+            metadata = self.get_metadata(input_path)
+            metadata.update({
+                "pages": len(images),
+                "dpi": self.dpi,
+                "model": self.settings.model_name,
+            })
 
-        return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
+            return ParseResult(content=content, metadata=metadata, output_format=self.settings.output_format)
+
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Expected error while parsing PDF %s: %s", input_path, exc, exc_info=True)
+            return ParseResult(
+                content="",
+                metadata=self.get_metadata(input_path),
+                errors=[f"Failed to parse {input_path.name}: {exc!s}"],
+            )
 
     async def _pdf_to_images(self, pdf_path: Path, page_range: tuple[int, int] | None = None) -> list[Image.Image]:
         """Convert PDF pages to PIL Image objects.
@@ -2744,7 +2920,11 @@ class PDFParser(BaseParser):
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
-        images = await loop.run_in_executor(None, lambda: convert_from_path(str(pdf_path), **kwargs))
+        # pdf2image stubs do not include **kwargs variants; cast at call-site.
+        images = await loop.run_in_executor(
+            None,
+            lambda: convert_from_path(str(pdf_path), **kwargs),  # type: ignore[arg-type]
+        )
 
         return images
 
@@ -2951,17 +3131,6 @@ class PDFParser(BaseParser):
 
         return "\n".join(cleaned_lines)
 
-    def _has_supported_extension(self, input_path: Path) -> bool:
-        """Check if the input path has a supported file extension.
-
-        Args:
-            input_path (Path): Path to the file.
-
-        Returns:
-            bool: True if the file has a supported extension, False otherwise.
-        """
-        return super()._has_supported_extension(input_path)
-
 
 
 ================================================================================
@@ -3002,6 +3171,7 @@ Examples:
 from __future__ import annotations
 
 import json
+import logging
 from typing import TYPE_CHECKING, Any
 import uuid
 
@@ -3012,8 +3182,9 @@ from pptx.exc import PackageNotFoundError
 
 from doc_parser.config import AppConfig
 from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
 from doc_parser.utils.cache import cache_get, cache_set
-from doc_parser.utils.format_helpers import rows_to_markdown
+from doc_parser.utils.mixins import TableMarkdownMixin
 
 if TYPE_CHECKING:
     from pathlib import Path
@@ -3022,7 +3193,7 @@ if TYPE_CHECKING:
 
 
 @AppConfig.register("pptx", [".pptx"])
-class PptxParser(BaseParser):
+class PptxParser(TableMarkdownMixin, BaseParser):
     """Parser for PowerPoint presentations (.pptx).
 
     Extracts slide text, tables, images, and notes into Markdown or JSON.
@@ -3055,11 +3226,14 @@ class PptxParser(BaseParser):
         super().__init__(config)
 
         # PPTX-specific configuration
-        pptx_cfg = config.parser_cfg("pptx")
-        self.extract_images: bool = pptx_cfg.get("extract_images", True)
-        self.extract_notes: bool = pptx_cfg.get("extract_notes", False)
-        self.preserve_formatting: bool = pptx_cfg.get("preserve_formatting", True)
-        self.slide_delimiter: str = pptx_cfg.get("slide_delimiter", "---")
+        pptx_cfg = config.parsers.pptx
+
+        self.extract_images = pptx_cfg.extract_images if pptx_cfg.extract_images is not None else True
+        self.extract_notes = pptx_cfg.extract_notes if pptx_cfg.extract_notes is not None else False
+        self.preserve_formatting = (
+            pptx_cfg.preserve_formatting if pptx_cfg.preserve_formatting is not None else True
+        )
+        self.slide_delimiter = pptx_cfg.slide_delimiter or "---"
 
     # ------------------------------------------------------------------
     # Validation helpers
@@ -3096,6 +3270,8 @@ class PptxParser(BaseParser):
         Returns:
             ParseResult: Contains combined content, metadata, and format.
         """
+        logger = logging.getLogger(__name__)
+
         if not await self.validate_input(input_path):
             return ParseResult(
                 content="",
@@ -3103,57 +3279,61 @@ class PptxParser(BaseParser):
                 errors=[f"Invalid PPTX file: {input_path}"],
             )
 
-        _ = options  # unused currently
-        prs = Presentation(str(input_path))
+        try:
+            _ = options  # unused currently
+            prs = Presentation(str(input_path))
 
-        slide_markdowns: list[str] = []
-        slide_dicts: list[dict[str, Any]] = []
+            slide_markdowns: list[str] = []
+            slide_dicts: list[dict[str, Any]] = []
 
-        # Directory to save extracted images if enabled
-        images_dir = self.settings.output_dir / f"{input_path.stem}_images"
-        if self.extract_images:
-            images_dir.mkdir(parents=True, exist_ok=True)
+            # Directory to save extracted images if enabled
+            images_dir = self.settings.output_dir / f"{input_path.stem}_images"
+            if self.extract_images:
+                images_dir.mkdir(parents=True, exist_ok=True)
 
-        # Iterate through slides
-        for idx, slide in enumerate(prs.slides, start=1):
-            # Include output format in cache key so markdown & JSON caches do not collide
-            cache_key = f"{input_path.stem}_{self.settings.output_format}_slide_{idx}"
+            # Iterate through slides
+            for idx, slide in enumerate(prs.slides, start=1):
+                # Include output format in cache key so markdown & JSON caches do not collide
+                cache_key = f"{input_path.stem}_{self.settings.output_format}_slide_{idx}"
 
-            cached = await cache_get(self.cache, cache_key) if self.settings.use_cache else None
+                cached = await cache_get(self.cache, cache_key) if self.settings.use_cache else None
 
-            if cached:
-                # Cached content reuse
+                if cached:
+                    # Cached content reuse
+                    if self.settings.output_format == "json":
+                        slide_dicts.append(cached["data"])
+                    else:
+                        slide_markdowns.append(cached["content"])
+                    continue
+
+                # Fresh extraction
                 if self.settings.output_format == "json":
-                    slide_dicts.append(cached["data"])
+                    slide_data = self._slide_to_dict(slide, images_dir)
+                    slide_dicts.append(slide_data)
+                    await cache_set(self.cache, cache_key, {"data": slide_data})
                 else:
-                    slide_markdowns.append(cached["content"])
-                continue
+                    slide_md = self._slide_to_markdown(slide, images_dir)
+                    slide_markdowns.append(slide_md)
+                    await cache_set(self.cache, cache_key, {"content": slide_md})
 
-            # Fresh extraction
+            # Combine slide outputs
             if self.settings.output_format == "json":
-                slide_data = self._slide_to_dict(slide, images_dir)
-                slide_dicts.append(slide_data)
-                await cache_set(self.cache, cache_key, {"data": slide_data})
+                combined_content = json.dumps(slide_dicts, indent=2, ensure_ascii=False)
             else:
-                slide_md = self._slide_to_markdown(slide, images_dir)
-                slide_markdowns.append(slide_md)
-                await cache_set(self.cache, cache_key, {"content": slide_md})
+                delimiter = f"\n\n{self.slide_delimiter}\n\n"
+                combined_content = delimiter.join(slide_markdowns)
 
-        # Combine slide outputs
-        if self.settings.output_format == "json":
-            combined_content = json.dumps(slide_dicts, indent=2, ensure_ascii=False)
-        else:
-            delimiter = f"\n\n{self.slide_delimiter}\n\n"
-            combined_content = delimiter.join(slide_markdowns)
+            metadata = self.get_metadata(input_path)
+            metadata.update({"slides": len(prs.slides)})
 
-        metadata = self.get_metadata(input_path)
-        metadata.update({"slides": len(prs.slides)})
-
-        return ParseResult(
-            content=combined_content,
-            metadata=metadata,
-            output_format=self.settings.output_format,
-        )
+            return ParseResult(
+                content=combined_content,
+                metadata=metadata,
+                output_format=self.settings.output_format,
+            )
+        except EXPECTED_EXCEPTIONS as exc:
+            logger.debug("Expected error while parsing PPTX %s: %s", input_path, exc, exc_info=True)
+            return ParseResult(content="", metadata=self.get_metadata(input_path), errors=[str(exc)])
 
     # ------------------------------------------------------------------
     # Helper methods
@@ -3241,11 +3421,6 @@ class PptxParser(BaseParser):
         return lines
 
     # ---------------- Table helpers ----------------
-    def _table_to_markdown(self, table: Any) -> str:
-        """Convert a table shape to Markdown."""
-        rows = [[cell.text_frame.text.strip() for cell in row.cells] for row in table.rows]
-        return rows_to_markdown(rows)
-
     def _table_to_list(self, table: Any) -> list[list[str]]:
         return [[cell.text_frame.text.strip() for cell in row.cells] for row in table.rows]
 
@@ -4423,6 +4598,171 @@ __all__ = [
 
 
 ================================================================================
+File: doc_parser/utils/logging_config.py
+================================================================================
+
+"""Central logging utility for *doc_parser*.
+
+The module sets up a sane default logging configuration so that debug logs
+emitted by the library (particularly around expected-exception handling) are
+visible to the application.
+
+Usage (called automatically)::
+
+    import doc_parser  # logging is already configured
+
+You may override the default level by either:
+
+* Setting the environment variable ``DOC_PARSER_DEBUG=1`` prior to import.
+* Calling :pyfunc:`init` manually with ``debug=True`` or a custom level.
+
+The configuration is idempotent - re-invoking :pyfunc:`init` will not add
+duplicate handlers.
+"""
+
+from __future__ import annotations
+
+import logging
+import os
+from typing import Any
+
+_DEFAULT_FORMAT = "%(asctime)s | %(name)s | %(levelname)s | %(message)s"
+
+
+def init(*, debug: bool | None = None, level: int | None = None, **basic_cfg: Any) -> None:
+    """Initialise root logger with sensible defaults.
+
+    Args:
+        debug: If *True*, force :pydata:`logging.DEBUG` level regardless of
+            *level*. If *None*, the value of the ``DOC_PARSER_DEBUG`` env var is
+            consulted (interpreted as *True* when set to ``"1"``).
+        level: Explicit logging level.  Ignored when *debug* is *True*.
+        **basic_cfg: Additional keyword arguments forwarded to
+            :pyfunc:`logging.basicConfig` (e.g., *format*, *datefmt*).
+    """
+    root_logger = logging.getLogger()
+
+    # Avoid adding duplicate handlers if already configured
+    if root_logger.handlers:
+        return
+
+    if debug is None:
+        debug = os.getenv("DOC_PARSER_DEBUG", "0") == "1"
+
+    level_to_use = logging.DEBUG if debug else level if level is not None else logging.INFO
+
+    cfg: dict[str, Any] = {
+        "level": level_to_use,
+        "format": _DEFAULT_FORMAT,
+        "force": True,  # override possible prior basicConfig calls
+    }
+    cfg.update(basic_cfg)
+    logging.basicConfig(**cfg)
+
+
+# ---------------------------------------------------------------------------
+# Auto-configure on import (respecting env var)
+# ---------------------------------------------------------------------------
+init()
+
+__all__: list[str] = ["init"]
+
+
+
+================================================================================
+File: doc_parser/utils/mixins.py
+================================================================================
+
+# Reusable mixin classes that provide markdown-conversion helpers.
+
+"""Reusable mixin classes that provide markdown-conversion helpers.
+
+These mixins encapsulate functionality that is duplicated across multiple
+parser implementations, allowing us to keep each concrete parser lean while
+avoiding copy-pasted helper methods.
+
+Exported mixins:
+* TableMarkdownMixin  - provides ``_table_to_markdown`` for python-docx and
+  python-pptx table objects.
+* DataFrameMarkdownMixin - provides ``_dataframe_to_markdown`` for pandas
+  ``DataFrame`` objects.
+"""
+
+from __future__ import annotations
+
+from typing import TYPE_CHECKING, Any
+
+from doc_parser.utils.format_helpers import dataframe_to_markdown as _df_to_md, rows_to_markdown
+
+if TYPE_CHECKING:  # pragma: no cover
+    import pandas as pd
+
+__all__ = [
+    "DataFrameMarkdownMixin",
+    "TableMarkdownMixin",
+]
+
+
+class TableMarkdownMixin:  # pylint: disable=too-few-public-methods
+    """Mixin that converts a table-like object to GitHub-flavored Markdown.
+
+    The mixin defines a single helper method *_table_to_markdown* that concrete
+    parsers can call or expose.  It attempts to handle both *python-docx* and
+    *python-pptx* table objects:
+
+    * python-docx -> :class:`docx.table.Table` - cell text lives in ``cell.text``
+    * python-pptx -> :class:`pptx.table.Table` - cell text lives in
+      ``cell.text_frame.text``
+
+    If the table structure does not match either library, we fall back to
+    casting the cell value to *str*.
+    """
+
+    # The method relies only on public attributes, so type ignorance is fine.
+    def _table_to_markdown(self, table: Any) -> str:
+        """Return *table* rendered as a Markdown string."""
+        rows = _extract_table_rows(table)
+        return rows_to_markdown(rows)
+
+
+class DataFrameMarkdownMixin:  # pylint: disable=too-few-public-methods
+    """Mixin that exposes ``_dataframe_to_markdown`` using the shared util."""
+
+    def _dataframe_to_markdown(self, df: pd.DataFrame) -> str:
+        """Convert a pandas DataFrame to Markdown using the shared helper."""
+        return _df_to_md(df)
+
+
+# ---------------------------------------------------------------------------
+# Internal helpers (module-level, *not* exported)
+# ---------------------------------------------------------------------------
+
+
+def _extract_table_rows(table: Any) -> list[list[str]]:
+    """Extract rows of *table* as a list of string lists.
+
+    Handles **python-docx** and **python-pptx** table APIs.  For other table
+    representations, falls back to ``str(cell)`` casts.
+    """
+    rows: list[list[str]] = []
+
+    # Safe getattr checks to avoid AttributeError
+    if hasattr(table, "rows"):
+        for row in table.rows:
+            cell_texts: list[str] = []
+            for cell in row.cells:
+                if hasattr(cell, "text_frame") and hasattr(cell.text_frame, "text"):
+                    cell_texts.append(cell.text_frame.text.strip())
+                elif hasattr(cell, "text"):
+                    cell_texts.append(str(cell.text).strip())
+                else:
+                    cell_texts.append(str(cell).strip())
+            rows.append(cell_texts)
+    return rows
+
+
+
+================================================================================
 File: examples/example_usage.py
 ================================================================================
 
@@ -5045,9 +5385,8 @@ async def test_post_processing_failure(monkeypatch, tmp_path):
     settings = AppConfig(use_cache=False, post_prompt="Prompt")
     parser = CountingParser(settings)
 
-    result = await parser.parse(file_path)
-    assert result.post_content is None
-    assert any("Post-processing failed" in e for e in result.errors) 
+    with pytest.raises(RuntimeError):
+        await parser.parse(file_path) 
 
 
 ================================================================================
@@ -5100,6 +5439,71 @@ def test_parse_result_helpers(tmp_path):
     md_path = tmp_path / "out.md"
     pr.save_markdown(md_path)
     assert md_path.read_text() == "abc" 
+
+
+================================================================================
+File: tests/core/test_error_handling_policy.py
+================================================================================
+
+from __future__ import annotations
+
+import asyncio
+from pathlib import Path
+
+import pytest
+
+from doc_parser.core.base import BaseParser, ParseResult
+from doc_parser.config import AppConfig
+from doc_parser.core.error_policy import EXPECTED_EXCEPTIONS
+
+
+class DummyParser(BaseParser):
+    """A minimal parser used to test the global error-handling policy."""
+
+    def __init__(self, should_raise: Exception | None = None):
+        cfg = AppConfig()
+        super().__init__(cfg)
+        self._should_raise = should_raise
+
+    async def validate_input(self, _input_path: Path) -> bool:  # noqa: D401
+        return True
+
+    async def _open_document(self, _input_path: Path, *, options=None):  # noqa: D401
+        return object()
+
+    async def _extract_as_markdown(self, _doc):  # noqa: D401
+        if self._should_raise:
+            raise self._should_raise
+        return "sample"
+
+    async def _extract_as_json(self, _doc):  # noqa: D401
+        return "{}"
+
+
+@pytest.mark.asyncio
+@pytest.mark.parametrize("exc", [exc() for exc in EXPECTED_EXCEPTIONS])
+async def test_expected_exceptions_are_caught(exc, tmp_path):
+    """Parsers should convert *expected* errors into ParseResult.errors."""
+    dummy_file = tmp_path / "dummy.txt"
+    dummy_file.write_text("x")
+    parser = DummyParser(should_raise=exc)
+    result: ParseResult = await parser.parse(dummy_file)
+    assert result.errors, "Expected errors list to be populated"
+    assert isinstance(result, ParseResult)
+
+
+@pytest.mark.asyncio
+async def test_unexpected_exceptions_propagate(tmp_path):
+    """Errors not in EXPECTED_EXCEPTIONS should propagate (fail-fast)."""
+
+    class UnexpectedError(RuntimeError):
+        pass
+
+    dummy_file = tmp_path / "d.txt"
+    dummy_file.write_text("y")
+    parser = DummyParser(should_raise=UnexpectedError())
+    with pytest.raises(UnexpectedError):
+        await parser.parse(dummy_file) 
 
 
 ================================================================================
@@ -5181,10 +5585,13 @@ def test_settings_path_coercion(tmp_path):
     assert isinstance(settings.output_dir, Path) and settings.output_dir.exists()
 
 
-def test_settings_parser_cfg():
+def test_settings_parsers_config():
     overrides = {"excel": {"include_formulas": True}}
-    settings = AppConfig(parser_settings=overrides)
-    assert settings.parser_cfg("excel") == overrides["excel"] 
+
+    # Instantiate using legacy alias for backward compatibility.
+    cfg = AppConfig(parser_settings=overrides)
+
+    assert cfg.parsers.excel.include_formulas is True 
 
 
 ================================================================================
@@ -6258,4 +6665,75 @@ async def test_response_model_validation(tmp_path):
     # Ensure the value is a string, actual content may vary depending on live LLM response
     assert isinstance(result.value, str) and result.value
 
+
+
+================================================================================
+File: tests/utils/test_mixins.py
+================================================================================
+
+import pandas as pd
+
+from doc_parser.utils.mixins import DataFrameMarkdownMixin, TableMarkdownMixin
+from doc_parser.utils.format_helpers import rows_to_markdown, dataframe_to_markdown
+
+
+class _DummyTableRow:
+    """Simple stub mimicking a table row object with *cells* attribute."""
+
+    def __init__(self, values: list[str]):
+        self.cells = [type("Cell", (), {"text": v})() for v in values]
+
+
+class _DummyTable:
+    """Stub table object with a *rows* attribute compatible with TableMarkdownMixin."""
+
+    def __init__(self, rows: list[list[str]]):
+        self.rows = [_DummyTableRow(r) for r in rows]
+
+
+class _DummyTablePptxCell:  # noqa: D401  # type: ignore[pycodestyle]
+    def __init__(self, value: str):
+        self.text_frame = type("Tx", (), {"text": value})()
+
+
+class _DummyTableRowPptx:
+    def __init__(self, values: list[str]):
+        self.cells = [_DummyTablePptxCell(v) for v in values]
+
+
+class _DummyTablePptx:
+    def __init__(self, rows: list[list[str]]):
+        self.rows = [_DummyTableRowPptx(r) for r in rows]
+
+
+class _TableMixinUser(TableMarkdownMixin):
+    """Concrete class to expose mixin method for testing."""
+
+
+class _DFMixinUser(DataFrameMarkdownMixin):
+    """Concrete class to expose DataFrameMarkdownMixin for testing."""
+
+
+# ---------------------------------------------------------------------------
+# Tests
+# ---------------------------------------------------------------------------
+
+def test_table_markdown_mixin_docx_style() -> None:
+    rows = [["A", "B"], ["1", "2"]]
+    table = _DummyTable(rows)
+    expected = rows_to_markdown(rows)
+    assert _TableMixinUser()._table_to_markdown(table) == expected
+
+
+def test_table_markdown_mixin_pptx_style() -> None:
+    rows = [["X", "Y"], ["3", "4"]]
+    table = _DummyTablePptx(rows)
+    expected = rows_to_markdown(rows)
+    assert _TableMixinUser()._table_to_markdown(table) == expected
+
+
+def test_dataframe_markdown_mixin() -> None:
+    df = pd.DataFrame({"Col1": [1, 2], "Col2": [3, 4]})
+    expected = dataframe_to_markdown(df)
+    assert _DFMixinUser()._dataframe_to_markdown(df) == expected 
 

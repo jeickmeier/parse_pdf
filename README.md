@@ -15,6 +15,52 @@ For development with extra dependencies:
 pip install -e .[dev]
 ```
 
+### Quick-Start (TL;DR)
+
+> Get parsing in seconds — no configuration required.
+
+```bash
+# 1. Install
+pip install parse-pdf
+
+# 2. Parse a PDF from the CLI
+python -m doc_parser.cli parse docs/sample.pdf --format markdown -o sample.md
+
+# 3. Or use the Python API (async)
+python - <<'PY'
+from pathlib import Path
+import asyncio
+from doc_parser.config import AppConfig
+
+async def main() -> None:
+    parser = AppConfig.from_path(Path("docs/sample.pdf"))
+    result = await parser.parse(Path("docs/sample.pdf"))
+    print(result.content[:500])
+asyncio.run(main())
+PY
+```
+
+#### Architecture at a glance
+
+```mermaid
+graph TD
+    A["User"] -->|"CLI / Python API"| B["AppConfig"]
+    B --> C["Parser Registry"]
+    C --> D{"File Extension"}
+    D -->|".pdf"| E["PDFParser"]
+    D -->|".docx"| F["DOCXParser"]
+    D -->|".xlsx"| G["ExcelParser"]
+    D -->|".pptx"| H["PPTXParser"]
+    D -->|".html"| I["HTMLParser"]
+    E --> J["Extractors"]
+    F --> J
+    G --> J
+    H --> J
+    I --> J
+    J --> K["LLM Post-Processor"]
+    K --> L["ParseResult (content + metadata)"]
+```
+
 ---
 ## Basic Usage
 

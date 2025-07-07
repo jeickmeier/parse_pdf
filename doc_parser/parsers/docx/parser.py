@@ -64,11 +64,16 @@ class DocxParser(TableMarkdownMixin, BaseParser):
         """Initialize DOCX parser."""
         super().__init__(config)
 
-        # Get DOCX-specific settings
-        docx_config = config.parser_cfg("docx")
-        self.extract_images = docx_config.get("extract_images", True)
-        self.extract_headers_footers = docx_config.get("extract_headers_footers", False)
-        self.preserve_formatting = docx_config.get("preserve_formatting", True)
+        # Get DOCX-specific settings (typed model)
+        docx_cfg = config.parsers.docx
+
+        self.extract_images = docx_cfg.extract_images if docx_cfg.extract_images is not None else True
+        self.extract_headers_footers = (
+            docx_cfg.extract_headers_footers if docx_cfg.extract_headers_footers is not None else False
+        )
+        self.preserve_formatting = (
+            docx_cfg.preserve_formatting if docx_cfg.preserve_formatting is not None else True
+        )
 
     async def validate_input(self, input_path: Path) -> bool:
         """Validate whether the input path points to a valid DOCX file.

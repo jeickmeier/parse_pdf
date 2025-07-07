@@ -5,9 +5,13 @@ miscellaneous options into ``BaseParser.parse``.  Each parser now receives a
 strongly-typed options object, improving validation and static type-checking.
 """
 
+# -----------------------------------------------------------------------------
+# Imports
+# -----------------------------------------------------------------------------
+
 from __future__ import annotations
 
-from pydantic import BaseModel, Field, validator  # Pydantic v1 compatible
+from pydantic import BaseModel, Field, field_validator
 
 # Standard library
 
@@ -18,14 +22,16 @@ from pydantic import BaseModel, Field, validator  # Pydantic v1 compatible
 PageRange = tuple[int, int]
 
 
-class _BaseOptions(BaseModel):  # pylint: disable=too-few-public-methods
-    """Common ancestor to allow isinstance checks across option objects."""
+class _BaseOptions(BaseModel):
+    """Common ancestor for all strongly-typed parser option models."""
 
-    class Config:  # pylint: disable=too-few-public-methods
-        arbitrary_types_allowed = True
-        allow_population_by_field_name = True
-        validate_assignment = True
-        extra = "forbid"  # Disallow unexpected kwargs to catch typos early.
+    # ``model_config`` replaces the legacy *Config* inner-class in Pydantic v2.
+    model_config = {
+        "arbitrary_types_allowed": True,
+        "populate_by_name": True,
+        "validate_assignment": True,
+        "extra": "forbid",  # Disallow unexpected kwargs to catch typos early.
+    }
 
 
 # ----------------------------------------------------------------------------
@@ -46,8 +52,10 @@ class PdfOptions(_BaseOptions):
     )
 
     # Ensure correct ordering of the tuple and positive indices
-    @validator("page_range")
-    def _validate_page_range(cls, v: PageRange | None) -> PageRange | None:  # noqa: N805
+    @field_validator("page_range")
+    @classmethod
+    def _validate_page_range(cls, v: PageRange | None) -> PageRange | None:
+        """Ensure *(start, end)* tuple is positive, ordered and 1-based."""
         if v is None:
             return v
         start, end = v
@@ -56,6 +64,19 @@ class PdfOptions(_BaseOptions):
         if start > end:
             raise ValueError("page_range start must be <= end")
         return v
+
+    # ---------------- permanent configuration settings ----------------
+    dpi: int | None = Field(
+        default=None,
+        description="Image resolution (dots-per-inch) used when rasterising PDF pages.",
+        ge=72,
+        le=600,
+    )
+    batch_size: int | None = Field(
+        default=None,
+        description="Number of pages to process per extraction batch; falls back to global *batch_size* if *None*.",
+        ge=1,
+    )
 
 
 class HtmlOptions(_BaseOptions):
@@ -67,7 +88,7 @@ class HtmlOptions(_BaseOptions):
     )
     follow_links: bool | None = Field(
         default=None,
-        description="If *True*, the parser will crawl linked pages up to\n        *max_depth*.",
+        description="If *True*, the parser will crawl linked pages up to *max_depth*.",
     )
     max_depth: int | None = Field(
         default=None,
@@ -75,20 +96,26 @@ class HtmlOptions(_BaseOptions):
         description="Maximum recursion depth when *follow_links* is *True*.",
     )
 
+    # Provide sensible defaults if not explicitly overridden.
+    model_config = {
+        **_BaseOptions.model_config,
+        "validate_default": True,
+    }
+
 
 class DocxOptions(_BaseOptions):
     """Run-time options specific to the DOCX parser."""
 
-    extract_images: bool | None = Field(default=None)
-    extract_headers_footers: bool | None = Field(default=None)
-    preserve_formatting: bool | None = Field(default=None)
+    extract_images: bool | None = Field(default=None, description="If False, embedded images are ignored.")
+    extract_headers_footers: bool | None = Field(default=None, description="Include header/footer text in output.")
+    preserve_formatting: bool | None = Field(default=None, description="Preserve inline formatting such as bold/italic.")
 
 
 class ExcelOptions(_BaseOptions):
     """Run-time options specific to the Excel parser."""
 
-    include_formulas: bool | None = Field(default=None)
-    include_formatting: bool | None = Field(default=None)
+    include_formulas: bool | None = Field(default=None, description="Include cell formulas in the output.")
+    include_formatting: bool | None = Field(default=None, description="Include cell formatting metadata.")
     sheet_names: list[str] | None = Field(
         default=None,
         description="Subset of sheet names to parse; *None* parses all sheets.",
@@ -98,10 +125,10 @@ class ExcelOptions(_BaseOptions):
 class PptxOptions(_BaseOptions):
     """Run-time options specific to the PPTX parser."""
 
-    extract_images: bool | None = Field(default=None)
-    extract_notes: bool | None = Field(default=None)
-    preserve_formatting: bool | None = Field(default=None)
-    slide_delimiter: str | None = Field(default=None)
+    extract_images: bool | None = Field(default=None, description="Extract slide images where possible.")
+    extract_notes: bool | None = Field(default=None, description="Extract speaker notes for each slide.")
+    preserve_formatting: bool | None = Field(default=None, description="Preserve basic formatting codes.")
+    slide_delimiter: str | None = Field(default=None, description="Delimiter inserted between slides in Markdown output.")
 
 
 # ----------------------------------------------------------------------------
@@ -116,3 +143,12 @@ __all__ = [
     "PdfOptions",
     "PptxOptions",
 ]
+
+# -----------------------------------------------------------------------------
+# Notes
+# -----------------------------------------------------------------------------
+
+# This module originally depended on *Pydantic v1*'s ``validator`` API.  The
+# code-base has since migrated to *Pydantic v2*, replacing the old decorators
+# with :pyfunc:`pydantic.field_validator` and adopting the ``model_config``
+# style for class configuration.

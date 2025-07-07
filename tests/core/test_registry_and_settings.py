@@ -73,7 +73,10 @@ def test_settings_path_coercion(tmp_path):
     assert isinstance(settings.output_dir, Path) and settings.output_dir.exists()
 
 
-def test_settings_parser_cfg():
+def test_settings_parsers_config():
     overrides = {"excel": {"include_formulas": True}}
-    settings = AppConfig(parser_settings=overrides)
-    assert settings.parser_cfg("excel") == overrides["excel"] 
+
+    # Instantiate using legacy alias for backward compatibility.
+    cfg = AppConfig(parser_settings=overrides)
+
+    assert cfg.parsers.excel.include_formulas is True 

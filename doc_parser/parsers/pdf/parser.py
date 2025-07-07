@@ -86,9 +86,9 @@ class PDFParser(BaseParser):
         super().__init__(config)
 
         # Get PDF-specific settings
-        pdf_config = config.parser_cfg("pdf")
-        self.dpi = pdf_config.get("dpi", 300)
-        self.batch_size = pdf_config.get("batch_size", config.batch_size)
+        pdf_cfg = config.parsers.pdf
+        self.dpi = pdf_cfg.dpi if pdf_cfg.dpi is not None else 300
+        self.batch_size = pdf_cfg.batch_size if pdf_cfg.batch_size is not None else config.batch_size
 
         # Initialize extractor
         self.extractor = VisionExtractor(model_name=config.model_name)
@@ -220,7 +220,11 @@ class PDFParser(BaseParser):
 
         # Run in thread pool to avoid blocking
         loop = asyncio.get_event_loop()
-        images = await loop.run_in_executor(None, lambda: convert_from_path(str(pdf_path), **kwargs))
+        # pdf2image stubs do not include **kwargs variants; cast at call-site.
+        images = await loop.run_in_executor(
+            None,
+            lambda: convert_from_path(str(pdf_path), **kwargs),  # type: ignore[arg-type]
+        )
 
         return images
 
