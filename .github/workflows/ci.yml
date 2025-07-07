@@ -30,6 +30,13 @@ jobs:
             pyproject.toml
             uv.lock
 
+      - name: Create uv virtual environment
+        # Ensure uv operates inside an isolated environment (mirrors local workflow)
+        run: |
+          uv venv .venv
+          echo "VIRTUAL_ENV=$PWD/.venv" >> $GITHUB_ENV
+          echo "$PWD/.venv/bin" >> $GITHUB_PATH
+
       - name: Install project and tooling dependencies via uv
         run: |
           uv pip install --upgrade pip
