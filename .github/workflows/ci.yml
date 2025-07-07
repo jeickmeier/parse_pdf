@@ -41,7 +41,7 @@ jobs:
         run: |
           uv pip install --upgrade pip
           uv pip install .
-          uv pip install ruff mypy pytest pytest-cov
+          uv pip install ruff mypy pytest pytest-cov pytest-asyncio
 
       - name: Run Ruff formatter
         run: ruff format .
