@@ -3,13 +3,20 @@
 import asyncio
 import logging
 from pathlib import Path
+import os
 
 from dotenv import load_dotenv
 from pydantic import BaseModel, ConfigDict, Field, field_validator
 
 from doc_parser.config import AppConfig
-
 logging.basicConfig(level=logging.INFO)
+
+logger = logging.getLogger(__name__)
+
+logger.info("Loading environment variables from {%s}", Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
+
+logger.info("OPENAI_API_KEY: {%s},", os.getenv("OPENAI_API_KEY"))
 
 class QuestionAnswer(BaseModel):
     """A model representing a question and its corresponding answer extracted from a document.

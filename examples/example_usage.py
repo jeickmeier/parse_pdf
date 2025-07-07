@@ -8,11 +8,22 @@ so we opt out of strict mypy checking to avoid polluting CI results.
 """
 
 import asyncio
+import logging
+import os
 from pathlib import Path
+from dotenv import load_dotenv
 
 from doc_parser import parsers  # noqa: F401
 from doc_parser.config import AppConfig
 
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+
+logger.info("Loading environment variables from {%s}", Path(__file__).resolve().parent.parent / ".env")
+load_dotenv(dotenv_path=Path(__file__).resolve().parent.parent / ".env", override=True)
+
+logger.info("OPENAI_API_KEY: {%s},", os.getenv("OPENAI_API_KEY"))
 
 async def example_basic_usage():
     """Basic usage example."""
